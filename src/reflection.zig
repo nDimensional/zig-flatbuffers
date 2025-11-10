@@ -70,7 +70,7 @@ pub const Enum = struct {
     name: []const u8,
     values: []const *const EnumVal, // In order of their values.
     is_union: bool = false,
-    underlying_type: Type,
+    underlying_type: *const Type,
     attributes: ?[]const *const KeyValue = null,
     documentation: ?[]const []const u8 = null,
     /// File that this Enum is declared in.
@@ -79,7 +79,7 @@ pub const Enum = struct {
 
 pub const Field = struct {
     name: []const u8,
-    type: Type,
+    type: *const Type,
     id: u16,
     offset: u16,
     default_integer: i64 = 0,
@@ -87,7 +87,7 @@ pub const Field = struct {
     deprecated: bool = false,
     required: bool = false,
     key: bool = false,
-    attributes: ?[]const *KeyValue = null,
+    attributes: ?[]const *const KeyValue = null,
     documentation: ?[]const []const u8 = null,
     optional: bool = false,
     /// Number of padding octets to always add after this field. Structs only.
