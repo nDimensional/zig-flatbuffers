@@ -1,0 +1,8 @@
+.{
+    .name = .flatbuffers,
+    .fingerprint = 0xaedfda510e7ad736,
+    .version = "0.0.0",
+    .paths = .{
+        "src",
+    },
+}
