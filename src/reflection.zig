@@ -33,7 +33,7 @@ pub const BaseType = enum(i8) {
 };
 
 pub const Type = struct {
-    base_type: BaseType = .None,
+    base_type: BaseType,
 
     element: BaseType = .None, // Only if base_type == Vector or base_type == Array.
 
@@ -98,7 +98,7 @@ pub const Field = struct {
 
 pub const Object = struct { // Used for both tables and structs.
     name: []const u8,
-    fields: []const *Field, // Sorted.
+    fields: []const *const Field, // Sorted.
     is_struct: bool = false,
     minalign: i32,
     bytesize: i32, // For structs.
