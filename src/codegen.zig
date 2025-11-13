@@ -4,7 +4,7 @@ const common = @import("common.zig");
 const String = common.String;
 const Vector = common.Vector;
 
-const reflection = @import("reflection.zig");
+const reflection = @import("reflection2.zig");
 
 pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     const schema = reflection.decodeRoot(data);
@@ -46,65 +46,72 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             else => return error.InvalidEnum,
         };
 
-        if (reflection.Enum.attributes(data, enum_item)) |attributes| {
-            const bit_flags_attribute = try findAttribute(data, attributes, "bit_flags");
-            if (bit_flags_attribute != null) {
-                const enum_values = try reflection.Enum.values(data, enum_item);
+        const is_bit_flag = try isBitFlag(data, enum_item);
+        if (is_bit_flag) {
+            const enum_values = try reflection.Enum.values(data, enum_item);
 
-                var flags_buffer: [256]u8 = undefined;
-                var flags_writer = std.io.Writer.fixed(&flags_buffer);
-                for (0..enum_values.len) |j| {
-                    const enum_val = enum_values.in(data, @truncate(j));
-                    const enum_val_value = reflection.EnumVal.value(data, enum_val);
-                    if (j > 0)
-                        try flags_writer.writeAll(", ");
-                    try flags_writer.print("{d}", .{enum_val_value});
-                }
-
-                const flags = flags_writer.buffered();
-
-                try writer.print("pub const {s} = packed struct", .{enum_name});
-                try writer.writeAll(" {\n");
-                try writer.print(
-                    \\    pub const kind = Kind{{
-                    \\        .BitFlags = .{{
-                    \\            .backing_integer = u64,
-                    \\            .flags = &.{{ {s} }},
-                    \\        }},
-                    \\    }};
-                    \\
-                    \\
-                , .{flags});
-
-                for (0..enum_values.len) |j| {
-                    const enum_val = enum_values.in(data, @truncate(j));
-                    const enum_val_name = try reflection.EnumVal.name(data, enum_val);
-                    try writer.print("    {s}: bool = false,\n", .{enum_val_name});
-                }
-
-                try writer.writeAll("};\n\n");
-                continue;
+            var flags_buffer: [256]u8 = undefined;
+            var flags_writer = std.io.Writer.fixed(&flags_buffer);
+            for (0..enum_values.len) |j| {
+                const enum_val = enum_values.in(data, @truncate(j));
+                const enum_val_value = reflection.EnumVal.value(data, enum_val);
+                if (j > 0)
+                    try flags_writer.writeAll(", ");
+                try flags_writer.print("{d}", .{enum_val_value});
             }
-        }
 
-        try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
-        try writer.writeAll(" {\n");
-        const enum_values = try reflection.Enum.values(data, enum_item);
-        for (0..enum_values.len) |j| {
-            const enum_value = enum_values.in(data, @truncate(j));
-            const enum_value_name = try reflection.EnumVal.name(data, enum_value);
-            const enum_value_value = reflection.EnumVal.value(data, enum_value);
-            try writer.print("    {s} = {d},\n", .{ enum_value_name, enum_value_value });
-        }
+            const flags = flags_writer.buffered();
 
-        try writer.writeAll("};\n\n");
+            try writer.print("pub const {s} = packed struct", .{enum_name});
+            try writer.writeAll(" {\n");
+            try writer.print(
+                \\    pub const kind = Kind{{
+                \\        .BitFlags = .{{
+                \\            .backing_integer = u64,
+                \\            .flags = &.{{ {s} }},
+                \\        }},
+                \\    }};
+                \\
+                \\
+            , .{flags});
+
+            for (0..enum_values.len) |j| {
+                const enum_val = enum_values.in(data, @truncate(j));
+                const enum_val_name = try reflection.EnumVal.name(data, enum_val);
+                try writer.print("    {s}: bool = false,\n", .{enum_val_name});
+            }
+
+            try writer.writeAll("};\n\n");
+        } else {
+            try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
+            try writer.writeAll(" {\n");
+            const enum_values = try reflection.Enum.values(data, enum_item);
+            for (0..enum_values.len) |j| {
+                const enum_value = enum_values.in(data, @truncate(j));
+
+                if (reflection.EnumVal.documentation(data, enum_value)) |documentation|
+                    for (0..documentation.len) |k|
+                        try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+
+                const enum_value_name = try reflection.EnumVal.name(data, enum_value);
+                const enum_value_value = reflection.EnumVal.value(data, enum_value);
+
+                try writer.print("    {s} = {d},\n", .{ enum_value_name, enum_value_value });
+            }
+
+            try writer.writeAll("};\n\n");
+        }
     }
 
     const objects = try reflection.Schema.objects(data, schema);
     for (0..objects.len) |i| {
         const object = objects.in(data, @truncate(i));
-        const object_name = try reflection.Object.name(data, object);
 
+        if (reflection.Object.documentation(data, object)) |documentation|
+            for (0..documentation.len) |j|
+                try writer.print("/// {s}\n", .{documentation.in(data, @truncate(j))});
+
+        const object_name = try reflection.Object.name(data, object);
         const object_fields = try reflection.Object.fields(data, object);
 
         if (reflection.Object.is_struct(data, object)) {
@@ -140,6 +147,10 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                 // if (field_offset != 4 + 2 * field_id)
                 //     return error.InvalidFieldOffset;
 
+                if (reflection.Field.documentation(data, field)) |documentation|
+                    for (0..documentation.len) |k|
+                        try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+
                 try writer.print("    pub fn @\"{s}\"(data: []const u8, ref: {s}Ref)", .{ field_name, object_name });
 
                 const field_base_type = try reflection.Type.base_type(data, field_type);
@@ -172,22 +183,23 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                             const field_enum = enums.in(data, @intCast(field_enum_index));
                             const field_enum_name = try reflection.Enum.name(data, field_enum);
 
-                            if (try isBitFlag(data, field_enum)) {
+                            const is_bit_flag = try isBitFlag(data, field_enum);
+                            if (is_bit_flag) {
                                 // TODO: default bit flag values
                                 try writer.print(
                                     \\ {s} {{
-                                    \\        return try common.decodeScalarField({d}, {s}, data, ref.offset, null);
+                                    \\        return try common.decodeScalarField({d}, {s}, data, ref.offset, {s}{{}});
                                     \\    }}
-                                , .{ field_enum_name, field_id, field_enum_name });
+                                , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
                             } else {
                                 const default_enum_value = try findEnumValue(data, field_enum, default_integer);
                                 const default_enum_name = try reflection.EnumVal.name(data, default_enum_value);
 
                                 try writer.print(
                                     \\ !{s} {{
-                                    \\        return try common.decodeEnumField({d}, {s}, data, ref.offset, .{s});
+                                    \\        return try common.decodeEnumField({d}, {s}, data, ref.offset, {s}.{s});
                                     \\    }}
-                                , .{ field_enum_name, field_id, field_enum_name, default_enum_name });
+                                , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
                             }
                         }
                     },
@@ -331,6 +343,7 @@ fn findEnumValue(data: []const u8, enum_ref: reflection.EnumRef, value: i64) !re
             return enum_value_ref;
         }
     }
+
     return error.InvalidEnumValue;
 }
 
