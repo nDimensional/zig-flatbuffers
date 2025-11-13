@@ -4,7 +4,7 @@ const common = @import("common.zig");
 const String = common.String;
 const Vector = common.Vector;
 
-const reflection = @import("reflection3.zig");
+const reflection = @import("reflection.zig");
 
 pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     const schema = reflection.decodeRoot(data);
@@ -127,18 +127,19 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                 const field_name = try reflection.Field.name(data, field);
                 const field_type = try reflection.Field.type(data, field);
                 const field_id = reflection.Field.id(data, field);
-                const field_offset = reflection.Field.offset(data, field);
+                // const field_offset = reflection.Field.offset(data, field);
                 // const default_integer = reflection.Field.default_integer(data, field);
                 // const default_real = reflection.Field.default_real(data, field);
-                // const deprecated = reflection.Field.deprecated(data, field);
+                const deprecated = reflection.Field.deprecated(data, field);
                 const required = reflection.Field.required(data, field);
                 // const key = reflection.Field.key(data, field);
                 // const attributes = reflection.Field.attributes(data, field);
 
-                if (field_offset != 4 + 2 * field_id)
-                    return error.InvalidFieldOffset;
+                if (deprecated) continue;
 
-                try writer.print("    // field_id: {d}, field_offset: {d}\n", .{ field_id, field_offset });
+                // if (field_offset != 4 + 2 * field_id)
+                //     return error.InvalidFieldOffset;
+
                 try writer.print("    pub fn @\"{s}\"(data: []const u8, ref: {s}Ref)", .{ field_name, object_name });
 
                 const field_base_type = try reflection.Type.base_type(data, field_type);

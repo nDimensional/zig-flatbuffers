@@ -5,11 +5,6 @@ const Kind = common.Kind;
 const String = common.String;
 const Vector = common.Vector;
 
-// This schema defines objects that represent a parsed schema, like
-// the binary version of a .fbs file.
-// This could be used to operate on unknown FlatBuffers at runtime.
-// It can even ... represent itself (!)
-
 pub const file_identifier = "BFBS";
 pub const file_extension = "bfbs";
 
@@ -102,10 +97,6 @@ pub const EnumVal = struct {
         return common.decodeTableField(3, ObjectRef, data, ref.offset);
     }
 
-    pub fn union_type(data: []const u8, ref: EnumValRef) ?TypeRef {
-        return common.decodeTableField(4, TypeRef, data, ref.offset);
-    }
-
     pub fn documentation(data: []const u8, ref: EnumValRef) ?Vector(String) {
         return common.decodeVectorField(5, String, data, ref.offset);
     }
@@ -126,24 +117,12 @@ pub const Enum = struct {
             error.Required;
     }
 
-    pub fn is_union(data: []const u8, ref: EnumRef) bool {
-        return common.decodeScalarField(2, bool, data, ref.offset, false);
-    }
-
     pub fn underlying_type(data: []const u8, ref: EnumRef) !TypeRef {
         return common.decodeTableField(3, TypeRef, data, ref.offset) orelse error.Required;
     }
 
     pub fn attributes(data: []const u8, ref: EnumRef) ?Vector(KeyValueRef) {
         return common.decodeVectorField(4, KeyValueRef, data, ref.offset);
-    }
-
-    pub fn documentation(data: []const u8, ref: EnumRef) ?Vector(String) {
-        return common.decodeVectorField(5, String, data, ref.offset);
-    }
-
-    pub fn declaration_file(data: []const u8, ref: EnumRef) ?String {
-        return common.decodeStringField(6, data, ref.offset);
     }
 };
 
@@ -163,10 +142,6 @@ pub const Field = struct {
 
     pub fn id(data: []const u8, ref: FieldRef) u16 {
         return common.decodeScalarField(2, u16, data, ref.offset, null);
-    }
-
-    pub fn offset(data: []const u8, ref: FieldRef) u16 {
-        return common.decodeScalarField(3, u16, data, ref.offset, null);
     }
 
     pub fn default_integer(data: []const u8, ref: FieldRef) i64 {
@@ -192,22 +167,6 @@ pub const Field = struct {
     pub fn attributes(data: []const u8, ref: FieldRef) ?Vector(KeyValueRef) {
         return common.decodeVectorField(9, KeyValueRef, data, ref.offset);
     }
-
-    pub fn documentation(data: []const u8, ref: FieldRef) ?Vector(String) {
-        return common.decodeVectorField(10, String, data, ref.offset);
-    }
-
-    pub fn optional(data: []const u8, ref: FieldRef) bool {
-        return common.decodeScalarField(11, bool, data, ref.offset, false);
-    }
-
-    pub fn padding(data: []const u8, ref: FieldRef) u16 {
-        return common.decodeScalarField(12, u16, data, ref.offset, 0);
-    }
-
-    pub fn offset64(data: []const u8, ref: FieldRef) bool {
-        return common.decodeScalarField(13, bool, data, ref.offset, false);
-    }
 };
 
 pub const ObjectRef = packed struct {
@@ -228,111 +187,8 @@ pub const Object = struct {
         return common.decodeScalarField(2, bool, data, ref.offset, false);
     }
 
-    pub fn minalign(data: []const u8, ref: ObjectRef) i32 {
-        return common.decodeScalarField(3, i32, data, ref.offset, 0);
-    }
-
-    pub fn bytesize(data: []const u8, ref: ObjectRef) i32 {
-        return common.decodeScalarField(4, i32, data, ref.offset, 0);
-    }
-
     pub fn attributes(data: []const u8, ref: ObjectRef) ?Vector(KeyValueRef) {
         return common.decodeVectorField(5, KeyValueRef, data, ref.offset);
-    }
-
-    pub fn documentation(data: []const u8, ref: ObjectRef) ?Vector(String) {
-        return common.decodeVectorField(6, String, data, ref.offset);
-    }
-
-    pub fn declaration_file(data: []const u8, ref: ObjectRef) ?String {
-        return common.decodeStringField(7, data, ref.offset);
-    }
-};
-
-pub const RPCCallRef = packed struct {
-    pub const kind = Kind.Table;
-    offset: u32,
-};
-
-pub const RPCCall = struct {
-    pub fn name(data: []const u8, ref: RPCCallRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
-    }
-
-    pub fn request(data: []const u8, ref: RPCCallRef) !ObjectRef {
-        return common.decodeTableField(1, ObjectRef, data, ref.offset) orelse error.Required;
-    }
-
-    pub fn response(data: []const u8, ref: RPCCallRef) !ObjectRef {
-        return common.decodeTableField(2, ObjectRef, data, ref.offset) orelse error.Required;
-    }
-
-    pub fn attributes(data: []const u8, ref: RPCCallRef) ?Vector(KeyValueRef) {
-        return common.decodeVectorField(3, KeyValueRef, data, ref.offset);
-    }
-
-    pub fn documentation(data: []const u8, ref: RPCCallRef) ?Vector(String) {
-        return common.decodeVectorField(4, String, data, ref.offset);
-    }
-};
-
-pub const ServiceRef = packed struct {
-    pub const kind = Kind.Table;
-    offset: u32,
-};
-
-pub const Service = struct {
-    pub fn name(data: []const u8, ref: ServiceRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
-    }
-
-    pub fn calls(data: []const u8, ref: ServiceRef) ?Vector(RPCCallRef) {
-        return common.decodeVectorField(1, RPCCallRef, data, ref.offset);
-    }
-
-    pub fn attributes(data: []const u8, ref: ServiceRef) ?Vector(KeyValueRef) {
-        return common.decodeVectorField(2, KeyValueRef, data, ref.offset);
-    }
-
-    pub fn documentation(data: []const u8, ref: ServiceRef) ?Vector(String) {
-        return common.decodeVectorField(3, String, data, ref.offset);
-    }
-
-    pub fn declaration_file(data: []const u8, ref: ServiceRef) ?String {
-        return common.decodeStringField(4, data, ref.offset);
-    }
-};
-
-/// New schema language features that are not supported by old code generators.
-pub const AdvancedFeatures = packed struct {
-    pub const kind = Kind{
-        .BitFlags = .{
-            .backing_integer = u64,
-            .flags = &.{ 1, 2, 4, 8 },
-        },
-    };
-
-    AdvancedArrayFeatures: bool = false,
-    AdvancedUnionFeatures: bool = false,
-    OptionalScalars: bool = false,
-    DefaultVectorsAndStrings: bool = false,
-};
-
-/// File specific information.
-/// Symbols declared within a file may be recovered by iterating over all
-/// symbols and examining the `declaration_file` field.
-pub const SchemaFileRef = packed struct {
-    pub const kind = Kind.Table;
-    offset: u32,
-};
-
-pub const SchemaFile = struct {
-    pub fn filename(data: []const u8, ref: SchemaFileRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
-    }
-
-    pub fn included_filenames(data: []const u8, ref: SchemaFileRef) ?Vector(String) {
-        return common.decodeVectorField(1, String, data, ref.offset);
     }
 };
 
@@ -360,18 +216,6 @@ pub const Schema = struct {
 
     pub fn root_table(data: []const u8, ref: SchemaRef) ?ObjectRef {
         return common.decodeTableField(4, ObjectRef, data, ref.offset);
-    }
-
-    pub fn services(data: []const u8, ref: SchemaRef) ?Vector(ServiceRef) {
-        return common.decodeVectorField(5, ServiceRef, data, ref.offset);
-    }
-
-    pub fn advanced_features(data: []const u8, ref: SchemaRef) AdvancedFeatures {
-        return common.decodeScalarField(6, AdvancedFeatures, data, ref.offset, .{});
-    }
-
-    pub fn fbs_files(data: []const u8, ref: SchemaRef) ?Vector(SchemaFileRef) {
-        return common.decodeVectorField(7, SchemaFileRef, data, ref.offset);
     }
 };
 
