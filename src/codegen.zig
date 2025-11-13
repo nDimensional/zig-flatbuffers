@@ -4,7 +4,7 @@ const common = @import("common.zig");
 const String = common.String;
 const Vector = common.Vector;
 
-const reflection = @import("reflection2.zig");
+const reflection = @import("reflection.zig");
 
 pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     const schema = reflection.decodeRoot(data);
@@ -89,9 +89,9 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             for (0..enum_values.len) |j| {
                 const enum_value = enum_values.in(data, @truncate(j));
 
-                if (reflection.EnumVal.documentation(data, enum_value)) |documentation|
-                    for (0..documentation.len) |k|
-                        try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+                // if (reflection.EnumVal.documentation(data, enum_value)) |documentation|
+                //     for (0..documentation.len) |k|
+                //         try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
 
                 const enum_value_name = try reflection.EnumVal.name(data, enum_value);
                 const enum_value_value = reflection.EnumVal.value(data, enum_value);
@@ -107,9 +107,9 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     for (0..objects.len) |i| {
         const object = objects.in(data, @truncate(i));
 
-        if (reflection.Object.documentation(data, object)) |documentation|
-            for (0..documentation.len) |j|
-                try writer.print("/// {s}\n", .{documentation.in(data, @truncate(j))});
+        // if (reflection.Object.documentation(data, object)) |documentation|
+        //     for (0..documentation.len) |j|
+        //         try writer.print("/// {s}\n", .{documentation.in(data, @truncate(j))});
 
         const object_name = try reflection.Object.name(data, object);
         const object_fields = try reflection.Object.fields(data, object);
@@ -147,9 +147,9 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                 // if (field_offset != 4 + 2 * field_id)
                 //     return error.InvalidFieldOffset;
 
-                if (reflection.Field.documentation(data, field)) |documentation|
-                    for (0..documentation.len) |k|
-                        try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+                // if (reflection.Field.documentation(data, field)) |documentation|
+                //     for (0..documentation.len) |k|
+                //         try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
 
                 try writer.print("    pub fn @\"{s}\"(data: []const u8, ref: {s}Ref)", .{ field_name, object_name });
 
