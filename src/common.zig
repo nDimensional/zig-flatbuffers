@@ -1,54 +1,97 @@
 const std = @import("std");
 
-const BitFlags = struct {
-    backing_integer: type,
-    flags: []const comptime_int,
-};
-
 pub const Kind = union(enum) {
+    pub const VectorInfo = struct {
+        element: type,
+    };
+
+    pub const ArrayInfo = struct {
+        element: type,
+        size: comptime_int,
+    };
+
+    pub const BitFlagsInfo = struct {
+        backing_integer: type,
+        flags: []const comptime_int,
+    };
+
     Table,
     Struct,
-    Vector: type,
-    Array: type,
-    BitFlags: BitFlags,
+    Vector: VectorInfo,
+    Array: ArrayInfo,
+    BitFlags: BitFlagsInfo,
 };
 
 pub const String = [:0]const u8;
 
+pub fn Array(comptime T: type, comptime size: comptime_int) type {
+    return packed struct {
+        pub const kind = Kind{ .Array = .{ .element = T, .size = size } };
+    };
+}
+
 pub fn Vector(comptime T: type) type {
-    return struct {
-        pub const kind = Kind.vector(T);
+    return packed struct {
+        pub const kind = Kind{ .Vector = .{ .element = T } };
+        const item_size = getSize(T);
 
         const Self = @This();
 
         offset: u32,
         len: u32,
 
-        pub fn in(self: Self, data: []const u8, index: u32) T {
+        pub fn in(self: Self, data: []const u8, index: usize) T {
             const start = self.offset + @sizeOf(u32);
-            switch (@typeInfo(T)) {
-                .@"enum" => @compileError("not implemented"),
-                .@"struct" => switch (@field(T, "kind")) {
-                    .Table => {
-                        const item_offset = start + @sizeOf(u32) * index;
-                        return decodeTable(T, data, item_offset);
-                    },
-                    .Vector => @compileError("cannot nest vectors"),
-                    .Struct, .Array, .BitFlags => @compileError("not implemented"),
-                },
-                .pointer => {
-                    const item_offset = start + @sizeOf(u32) * index;
-                    return decodeString(data, item_offset);
-                },
-                .int, .float, .bool => {
-                    const item_offset = start + @sizeOf(T) * index;
-                    return decodeScalar(T, data, item_offset);
-                },
-                else => @compileError("not implemented"),
-            }
+            const i: u32 = @truncate(index);
 
-            @compileError("not implemented");
+            const item_offset = start + item_size * i;
+
+            return switch (@typeInfo(T)) {
+                .@"enum" => decodeEnum(T, data, item_offset),
+                .@"struct" => switch (@field(T, "kind")) {
+                    Kind.Table => decodeTable(T, data, item_offset),
+                    Kind.Vector => @compileError("cannot nest vectors"),
+                    Kind.Struct => @compileError("not implemented"),
+                    Kind.Array => @compileError("not implemented"),
+                    Kind.BitFlags => decodeBitFlags(T, data, item_offset),
+                },
+                .pointer => decodeString(data, item_offset),
+                .int, .float, .bool => decodeScalar(T, data, item_offset),
+                else => @compileError("not implemented"),
+            };
         }
+    };
+}
+
+fn getSize(comptime T: type) comptime_int {
+    return switch (@typeInfo(T)) {
+        .int, .float, .bool => @sizeOf(T),
+        .pointer => @sizeOf(u32), // Strings
+        .@"struct" => switch (@field(T, "kind")) {
+            Kind.Table => @sizeOf(u32),
+            Kind.Vector => @sizeOf(u32),
+            Kind.Struct => @compileError("not implemented"),
+            Kind.Array => @compileError("not implemented"),
+            Kind.BitFlags => |bit_flags| @sizeOf(bit_flags.backing_integer),
+        },
+
+        else => @compileError("unexpected type"),
+    };
+}
+
+fn getAlignment(comptime T: type) comptime_int {
+    return switch (@typeInfo(T)) {
+        .int, .float, .bool => @sizeOf(T),
+        .pointer => @sizeOf(u32), // Strings
+        .@"struct" => switch (@field(T, "kind")) {
+            Kind.Table => @compileError("not implemented"),
+            Kind.Vector => @compileError("not implemented"),
+            Kind.Struct => @compileError("not implemented"),
+            Kind.Array => @compileError("not implemented"),
+            Kind.BitFlags => |bit_flags| @sizeOf(bit_flags.backing_integer),
+        },
+
+        else => @compileError("unexpected type"),
     };
 }
 
@@ -57,11 +100,11 @@ pub inline fn decodeEnumField(
     comptime T: type,
     data: []const u8,
     table_offset: u32,
-    comptime default: ?T,
-) !T {
+    comptime default: T,
+) T {
     const field_offset = getFieldOffset(data, table_offset, field_index) orelse
-        return default orelse defaultEnumValue(T);
-    return try decodeEnum(T, data, field_offset);
+        return default;
+    return decodeEnum(T, data, field_offset);
 }
 
 pub inline fn decodeScalarField(
@@ -69,11 +112,23 @@ pub inline fn decodeScalarField(
     comptime T: type,
     data: []const u8,
     table_offset: u32,
-    comptime default: ?T,
+    comptime default: T,
 ) T {
     const field_offset = getFieldOffset(data, table_offset, field_index) orelse
-        return default orelse defaultScalarValue(T);
+        return default;
     return decodeScalar(T, data, field_offset);
+}
+
+pub inline fn decodeBitFlagsField(
+    comptime field_index: u16,
+    comptime T: type,
+    data: []const u8,
+    table_offset: u32,
+    comptime default: T,
+) T {
+    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
+        return default;
+    return decodeBitFlags(T, data, field_offset);
 }
 
 pub inline fn decodeTableField(comptime field_index: u16, comptime T: type, data: []const u8, table_offset: u32) ?T {
@@ -93,7 +148,7 @@ pub inline fn decodeStringField(
     return decodeString(data, field_offset);
 }
 
-pub fn decodeVectorField(
+pub inline fn decodeVectorField(
     comptime field_index: u16,
     comptime T: type,
     data: []const u8,
@@ -105,10 +160,10 @@ pub fn decodeVectorField(
     return decodeVector(T, data, field_offset);
 }
 
-pub fn decodeEnum(comptime T: type, data: []const u8, offset: u32) !T {
+fn decodeEnum(comptime T: type, data: []const u8, offset: u32) T {
     const info = switch (@typeInfo(T)) {
         .@"enum" => |info| info,
-        else => @compileError("expected enum type"),
+        else => @panic("invalid enum type"),
     };
 
     const value = std.mem.readInt(
@@ -117,31 +172,10 @@ pub fn decodeEnum(comptime T: type, data: []const u8, offset: u32) !T {
         .little,
     );
 
-    const fields = info.fields.ptr[0..info.fields.len];
-    inline for (fields) |field| {
-        if (field.value == value)
-            return @enumFromInt(value);
-    }
-
-    return error.InvalidEnumValue;
+    return @enumFromInt(value);
 }
 
-pub fn defaultEnumValue(comptime T: type) !T {
-    const info = switch (@typeInfo(T)) {
-        .@"enum" => |info| info,
-        else => @compileError("expected enum type"),
-    };
-
-    const fields = info.fields.ptr[0..info.fields.len];
-    inline for (fields) |field| {
-        if (field.value == 0)
-            return @enumFromInt(0);
-    }
-
-    return error.InvalidEnumValue;
-}
-
-pub fn decodeScalar(comptime T: type, data: []const u8, offset: u32) T {
+fn decodeScalar(comptime T: type, data: []const u8, offset: u32) T {
     return switch (@typeInfo(T)) {
         .int => |info| switch (info.bits) {
             8, 16, 32, 64 => std.mem.readInt(T, data[offset..][0..@sizeOf(T)], .little),
@@ -153,135 +187,68 @@ pub fn decodeScalar(comptime T: type, data: []const u8, offset: u32) T {
             else => @compileError("only 32 and 64bit floats are supported"),
         },
         .bool => data[offset] != 0,
-        .@"struct" => |info| {
-            const kind: Kind = @field(T, "kind");
-            const bit_flags = switch (kind) {
-                .BitFlags => |bit_flags| bit_flags,
-                else => @compileError("expected bit flags"),
-            };
-
-            if (bit_flags.flags.len != info.fields.len)
-                @compileError("invalid bit flag fields");
-
-            const value: bit_flags.backing_integer = std.mem.readInt(
-                bit_flags.backing_integer,
-                data[offset..][0..@sizeOf(bit_flags.backing_integer)],
-                .little,
-            );
-
-            var result: T = .{};
-            inline for (info.fields, bit_flags.flags) |field, flag| {
-                if (field.type != bool)
-                    @compileError("invalid bit flag fields");
-
-                @field(result, field.name) = value & flag != 0;
-            }
-            return result;
-        },
         else => @compileError("expected scalar value"),
     };
 }
 
-pub fn defaultScalarValue(comptime T: type) T {
-    return switch (@typeInfo(T)) {
-        .int => 0,
-        .float => 0.0,
-        .bool => false,
-        .@"struct" => .{},
-        else => @compileError("expected scalar value"),
+fn decodeBitFlags(comptime T: type, data: []const u8, offset: u32) T {
+    const info = switch (@typeInfo(T)) {
+        .@"struct" => |info| info,
+        else => @compileError("expected bit flags struct"),
     };
-}
 
-fn getSize(comptime T: type) comptime_int {
-    switch (@typeInfo(T)) {
-        .int, .float, .bool => return @sizeOf(T),
-        .array => |info| return info.len * getSize(info.child),
-        // .pointer => return @sizeOf(u32),
-        .@"struct" => |info| {
-            if (info.layout != .@"packed")
-                @compileError("expected packed layout");
+    const bit_flags = switch (@field(T, "kind")) {
+        Kind.BitFlags => |bit_flags| bit_flags,
+        else => @compileError("expected bit flags struct"),
+    };
 
-            return @sizeOf(T);
-        },
+    if (bit_flags.flags.len != info.fields.len)
+        @compileError("invalid bit flag fields");
 
-        else => @compileError("unexpected type"),
+    const value: bit_flags.backing_integer = std.mem.readInt(
+        bit_flags.backing_integer,
+        data[offset..][0..@sizeOf(bit_flags.backing_integer)],
+        .little,
+    );
+
+    var result: T = .{};
+    inline for (info.fields, bit_flags.flags) |field, flag| {
+        if (field.type != bool)
+            @compileError("invalid bit flag fields");
+
+        @field(result, field.name) = value & flag != 0;
     }
+
+    return result;
 }
 
-fn getAlignment(comptime T: type) comptime_int {
-    switch (@typeInfo(T)) {
-        .int, .float, .bool => return @sizeOf(T),
-        .array => |info| return getAlignment(info.child),
-        .@"struct" => |info| {
-            if (info.layout != .@"packed")
-                @compileError("expected packed layout");
-
-            var alignment = 0;
-            inline for (info.fields) |field|
-                alignment = @max(alignment, getAlignment(field.type));
-
-            return alignment;
-        },
-
-        else => @compileError("unexpected type"),
-    }
-}
-
-// pub fn ScalarRef(comptime T: type) type {
-//     return switch (@typeInfo(T)) {
-//         .int, .float => *const [@sizeOf(T)]u8,
-//         .bool => *const [1]u8,
-//         else => @compileError("expected scalar type"),
-//     };
-// }
-
-// pub fn EnumRef(comptime T: type) type {
-//     return switch (@typeInfo(T)) {
-//         .@"enum" => |info| ScalarRef(info.tag_type),
-//         else => @compileError("expected enum type"),
-//     };
-// }
-
-// pub fn StructRef(comptime T: type) type {
-//     return *align(getAlignment(T)) const u8;
-// }
-
-// pub const StringRef = ScalarRef(u32);
-// pub const TableRef = ScalarRef(u32);
-
-// pub fn decode(comptime T: type, data: []const u8, offset: u32) T {
-//     switch (@typeInfo(T)) {}
-// }
-
-pub fn decodeVector(comptime T: type, data: []const u8, offset: u32) Vector(T) {
+fn decodeVector(comptime T: type, data: []const u8, offset: u32) Vector(T) {
     const vec_start_offset = decodeScalar(u32, data, offset);
     const vec_offset = offset + vec_start_offset;
     const vec_len = decodeScalar(u32, data, vec_offset);
     return Vector(T){ .offset = vec_offset, .len = vec_len };
 }
 
-pub inline fn decodeString(data: []const u8, offset: u32) String {
+inline fn decodeString(data: []const u8, offset: u32) String {
     const str_offset = offset + decodeScalar(u32, data, offset);
     const str_len = decodeScalar(u32, data, str_offset);
     return data[str_offset + @sizeOf(u32) ..][0..str_len :0];
 }
 
-pub inline fn decodeTable(comptime T: type, data: []const u8, offset: u32) T {
-    // T is a packed struct with one field `offset: u32`
+inline fn decodeTable(comptime T: type, data: []const u8, offset: u32) T {
     const table_offset = offset + decodeScalar(u32, data, offset);
     return T{ .offset = table_offset };
 }
 
-pub inline fn getVTableOffset(data: []const u8, table_offset: u32) u32 {
+inline fn getVTableOffset(data: []const u8, table_offset: u32) u32 {
     const vtable_soffset = decodeScalar(i32, data, table_offset);
     const vtable_uoffset = @as(i32, @intCast(table_offset)) - vtable_soffset;
     return @intCast(vtable_uoffset);
 }
 
-pub inline fn getFieldOffset(data: []const u8, table_offset: u32, comptime field_index: u16) ?u32 {
+fn getFieldOffset(data: []const u8, table_offset: u32, comptime field_index: u16) ?u32 {
     const vtable_offset = getVTableOffset(data, table_offset);
     const vtable_size = decodeScalar(u16, data, vtable_offset);
-    // const table_size = decodeScalar(u16, data, vtable_offset + @sizeOf(u16));
 
     const vtable_entry_offset_bytes = (2 + field_index) * @sizeOf(u16);
     if (vtable_entry_offset_bytes + @sizeOf(u16) <= vtable_size) {

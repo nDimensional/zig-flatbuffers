@@ -28,12 +28,12 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
 
     try writer.writeByte('\n');
 
-    const enums = try reflection.Schema.enums(data, schema);
+    const enums = reflection.Schema.enums(data, schema);
     for (0..enums.len) |i| {
-        const enum_item = enums.in(data, @truncate(i));
-        const enum_name = try reflection.Enum.name(data, enum_item);
-        const underlying_type = try reflection.Enum.underlying_type(data, enum_item);
-        const underlying_base_type = try reflection.Type.base_type(data, underlying_type);
+        const enum_item = enums.in(data, i);
+        const enum_name = reflection.Enum.name(data, enum_item);
+        const underlying_type = reflection.Enum.underlying_type(data, enum_item);
+        const underlying_base_type = reflection.Type.base_type(data, underlying_type);
         const enum_type = switch (underlying_base_type) {
             .Byte => "i8",
             .UByte => "u8",
@@ -46,14 +46,14 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             else => return error.InvalidEnum,
         };
 
-        const is_bit_flag = try isBitFlag(data, enum_item);
+        const is_bit_flag = hasBitFlags(data, enum_item);
         if (is_bit_flag) {
-            const enum_values = try reflection.Enum.values(data, enum_item);
+            const enum_values = reflection.Enum.values(data, enum_item);
 
             var flags_buffer: [256]u8 = undefined;
             var flags_writer = std.io.Writer.fixed(&flags_buffer);
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(data, @truncate(j));
+                const enum_val = enum_values.in(data, j);
                 const enum_val_value = reflection.EnumVal.value(data, enum_val);
                 if (j > 0)
                     try flags_writer.writeAll(", ");
@@ -76,8 +76,8 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             , .{flags});
 
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(data, @truncate(j));
-                const enum_val_name = try reflection.EnumVal.name(data, enum_val);
+                const enum_val = enum_values.in(data, j);
+                const enum_val_name = reflection.EnumVal.name(data, enum_val);
                 try writer.print("    {s}: bool = false,\n", .{enum_val_name});
             }
 
@@ -85,15 +85,15 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
         } else {
             try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
             try writer.writeAll(" {\n");
-            const enum_values = try reflection.Enum.values(data, enum_item);
+            const enum_values = reflection.Enum.values(data, enum_item);
             for (0..enum_values.len) |j| {
-                const enum_value = enum_values.in(data, @truncate(j));
+                const enum_value = enum_values.in(data, j);
 
                 // if (reflection.EnumVal.documentation(data, enum_value)) |documentation|
                 //     for (0..documentation.len) |k|
-                //         try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+                //         try writer.print("    /// {s}\n", .{documentation.in(data, k)});
 
-                const enum_value_name = try reflection.EnumVal.name(data, enum_value);
+                const enum_value_name = reflection.EnumVal.name(data, enum_value);
                 const enum_value_value = reflection.EnumVal.value(data, enum_value);
 
                 try writer.print("    {s} = {d},\n", .{ enum_value_name, enum_value_value });
@@ -103,16 +103,16 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
         }
     }
 
-    const objects = try reflection.Schema.objects(data, schema);
+    const objects = reflection.Schema.objects(data, schema);
     for (0..objects.len) |i| {
-        const object = objects.in(data, @truncate(i));
+        const object = objects.in(data, i);
 
         // if (reflection.Object.documentation(data, object)) |documentation|
         //     for (0..documentation.len) |j|
-        //         try writer.print("/// {s}\n", .{documentation.in(data, @truncate(j))});
+        //         try writer.print("/// {s}\n", .{documentation.in(data, j)});
 
-        const object_name = try reflection.Object.name(data, object);
-        const object_fields = try reflection.Object.fields(data, object);
+        const object_name = reflection.Object.name(data, object);
+        const object_fields = reflection.Object.fields(data, object);
 
         if (reflection.Object.is_struct(data, object)) {
             return error.NotImplemented;
@@ -130,17 +130,12 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             try writer.writeAll(" {\n");
 
             for (0..object_fields.len) |j| {
-                const field = object_fields.in(data, @truncate(j));
-                const field_name = try reflection.Field.name(data, field);
-                const field_type = try reflection.Field.type(data, field);
+                const field = object_fields.in(data, j);
+                const field_name = reflection.Field.name(data, field);
+                const field_type = reflection.Field.type(data, field);
                 const field_id = reflection.Field.id(data, field);
-                // const field_offset = reflection.Field.offset(data, field);
-                // const default_integer = reflection.Field.default_integer(data, field);
-                // const default_real = reflection.Field.default_real(data, field);
                 const deprecated = reflection.Field.deprecated(data, field);
                 const required = reflection.Field.required(data, field);
-                // const key = reflection.Field.key(data, field);
-                // const attributes = reflection.Field.attributes(data, field);
 
                 if (deprecated) continue;
 
@@ -149,11 +144,11 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
 
                 // if (reflection.Field.documentation(data, field)) |documentation|
                 //     for (0..documentation.len) |k|
-                //         try writer.print("    /// {s}\n", .{documentation.in(data, @truncate(k))});
+                //         try writer.print("    /// {s}\n", .{documentation.in(data, k)});
 
                 try writer.print("    pub fn @\"{s}\"(data: []const u8, ref: {s}Ref)", .{ field_name, object_name });
 
-                const field_base_type = try reflection.Type.base_type(data, field_type);
+                const field_base_type = reflection.Type.base_type(data, field_type);
                 // const field_base_size = reflection.Type.base_size(data, field_type);
 
                 switch (field_base_type) {
@@ -180,24 +175,25 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                         } else {
                             if (field_enum_index >= enums.len)
                                 return error.InvalidEnumIndex;
-                            const field_enum = enums.in(data, @intCast(field_enum_index));
-                            const field_enum_name = try reflection.Enum.name(data, field_enum);
 
-                            const is_bit_flag = try isBitFlag(data, field_enum);
+                            const field_enum = enums.in(data, @intCast(field_enum_index));
+                            const field_enum_name = reflection.Enum.name(data, field_enum);
+
+                            const is_bit_flag = hasBitFlags(data, field_enum);
                             if (is_bit_flag) {
                                 // TODO: default bit flag values
                                 try writer.print(
                                     \\ {s} {{
-                                    \\        return try common.decodeScalarField({d}, {s}, data, ref.offset, {s}{{}});
+                                    \\        return common.decodeBitFlagsField({d}, {s}, data, ref.offset, {s}{{}});
                                     \\    }}
                                 , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
                             } else {
                                 const default_enum_value = try findEnumValue(data, field_enum, default_integer);
-                                const default_enum_name = try reflection.EnumVal.name(data, default_enum_value);
+                                const default_enum_name = reflection.EnumVal.name(data, default_enum_value);
 
                                 try writer.print(
-                                    \\ !{s} {{
-                                    \\        return try common.decodeEnumField({d}, {s}, data, ref.offset, {s}.{s});
+                                    \\ {s} {{
+                                    \\        return common.decodeEnumField({d}, {s}, data, ref.offset, {s}.{s});
                                     \\    }}
                                 , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
                             }
@@ -215,10 +211,11 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                     .String => {
                         if (required) {
                             try writer.print(
-                                \\ !String {{
-                                \\        return common.decodeStringField({d}, data, ref.offset) orelse error.Required;
+                                \\ String {{
+                                \\        return common.decodeStringField({d}, data, ref.offset) orelse
+                                \\            @panic("missing {s}.{s} field");
                                 \\    }}
-                            , .{field_id});
+                            , .{ field_id, object_name, field_name });
                         } else {
                             try writer.print(
                                 \\ ?String {{
@@ -231,7 +228,7 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                         var element_name_buffer: [256]u8 = undefined;
                         var element_name_writer = std.io.Writer.fixed(&element_name_buffer);
 
-                        const element = try reflection.Type.element(data, field_type);
+                        const element = reflection.Type.element(data, field_type);
                         switch (element) {
                             .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
                                 const scalar_name = try getScalarName(field_base_type);
@@ -246,7 +243,7 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                                 if (element_object_index < 0 or element_object_index >= objects.len)
                                     return error.InvalidObjectIndex;
                                 const element_object = objects.in(data, @intCast(element_object_index));
-                                const element_object_name = try reflection.Object.name(data, element_object);
+                                const element_object_name = reflection.Object.name(data, element_object);
                                 try element_name_writer.writeAll(element_object_name);
                                 try element_name_writer.writeAll("Ref");
                             },
@@ -258,10 +255,11 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
 
                         if (required) {
                             try writer.print(
-                                \\ !Vector({s}) {{
-                                \\        return common.decodeVectorField({d}, {s}, data, ref.offset) orelse error.Required;
+                                \\ Vector({s}) {{
+                                \\        return common.decodeVectorField({d}, {s}, data, ref.offset) orelse
+                                \\            @panic("missing {s}.{s} field");
                                 \\    }}
-                            , .{ element_name, field_id, element_name });
+                            , .{ element_name, field_id, element_name, object_name, field_name });
                         } else {
                             try writer.print(
                                 \\ ?Vector({s}) {{
@@ -274,15 +272,17 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
                         const field_object_index = reflection.Type.index(data, field_type);
                         if (field_object_index < 0 or field_object_index >= objects.len)
                             return error.InvalidObjectIndex;
+
                         const field_object = objects.in(data, @intCast(field_object_index));
-                        const field_object_name = try reflection.Object.name(data, field_object);
+                        const field_object_name = reflection.Object.name(data, field_object);
 
                         if (required) {
                             try writer.print(
-                                \\ !{s}Ref {{
-                                \\        return common.decodeTableField({d}, {s}Ref, data, ref.offset) orelse error.Required;
+                                \\ {s}Ref {{
+                                \\        return common.decodeTableField({d}, {s}Ref, data, ref.offset) orelse
+                                \\            @panic("missing {s}.{s} field");
                                 \\    }}
-                            , .{ field_object_name, field_id, field_object_name });
+                            , .{ field_object_name, field_id, field_object_name, object_name, field_name });
                         } else {
                             try writer.print(
                                 \\ ?{s}Ref {{
@@ -305,7 +305,7 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     }
 
     if (reflection.Schema.root_table(data, schema)) |root_table| {
-        const root_table_name = try reflection.Object.name(data, root_table);
+        const root_table_name = reflection.Object.name(data, root_table);
         try writer.print("pub fn decodeRoot(data: []const u8) {s}Ref ", .{root_table_name});
         try writer.writeAll(
             \\{
@@ -317,16 +317,16 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
     }
 }
 
-fn isBitFlag(data: []const u8, enum_ref: reflection.EnumRef) !bool {
+fn hasBitFlags(data: []const u8, enum_ref: reflection.EnumRef) bool {
     const attributes = reflection.Enum.attributes(data, enum_ref) orelse return false;
-    const bit_flags = try findAttribute(data, attributes, "bit_flags");
+    const bit_flags = findAttribute(data, attributes, "bit_flags");
     return bit_flags != null;
 }
 
-fn findAttribute(data: []const u8, attributes: Vector(reflection.KeyValueRef), key: [:0]const u8) !?reflection.KeyValueRef {
+fn findAttribute(data: []const u8, attributes: Vector(reflection.KeyValueRef), key: [:0]const u8) ?reflection.KeyValueRef {
     for (0..attributes.len) |i| {
-        const attribute = attributes.in(data, @truncate(i));
-        const attribute_key = try reflection.KeyValue.key(data, attribute);
+        const attribute = attributes.in(data, i);
+        const attribute_key = reflection.KeyValue.key(data, attribute);
         if (std.mem.eql(u8, key, attribute_key)) {
             return attribute;
         }
@@ -336,9 +336,9 @@ fn findAttribute(data: []const u8, attributes: Vector(reflection.KeyValueRef), k
 }
 
 fn findEnumValue(data: []const u8, enum_ref: reflection.EnumRef, value: i64) !reflection.EnumValRef {
-    const enum_values = try reflection.Enum.values(data, enum_ref);
+    const enum_values = reflection.Enum.values(data, enum_ref);
     for (0..enum_values.len) |k| {
-        const enum_value_ref = enum_values.in(data, @truncate(k));
+        const enum_value_ref = enum_values.in(data, k);
         if (reflection.EnumVal.value(data, enum_value_ref) == value) {
             return enum_value_ref;
         }
@@ -417,18 +417,18 @@ test "simple decoder" {
 //     const file_ident = reflection.Schema.file_ident(data, schema);
 //     std.log.warn("file ident: {s}", .{file_ident orelse "(none)"});
 
-//     const objects = try reflection.Schema.objects(data, schema);
+//     const objects =  reflection.Schema.objects(data, schema);
 //     std.log.warn("objects: {any}", .{objects});
 
 //     for (0..objects.len) |i| {
-//         const object = objects.in(data, @truncate(i));
-//         const object_name = try reflection.Object.name(data, object);
+//         const object = objects.in(data, i);
+//         const object_name =  reflection.Object.name(data, object);
 //         std.log.warn("object {d}: {s}", .{ i, object_name });
 
-//         const fields = try reflection.Object.fields(data, object);
+//         const fields =  reflection.Object.fields(data, object);
 //         for (0..fields.len) |j| {
-//             const field = fields.in(data, @truncate(j));
-//             const field_name = try reflection.Field.name(data, field);
+//             const field = fields.in(data, j);
+//             const field_name =  reflection.Field.name(data, field);
 //             std.log.warn("  field {d}: {s}", .{ j, field_name });
 //         }
 //     }
@@ -446,18 +446,18 @@ test "simple decoder" {
 //     if (reflection.Schema.file_ext(data, schema)) |file_extension|
 //         std.log.warn("file extension: {s}", .{file_extension});
 
-//     const objects = try reflection.Schema.objects(data, schema);
+//     const objects =  reflection.Schema.objects(data, schema);
 //     std.log.warn("objects: {any}", .{objects});
 
 //     for (0..objects.len) |i| {
-//         const object = objects.in(data, @truncate(i));
-//         const object_name = try reflection.Object.name(data, object);
+//         const object = objects.in(data, i);
+//         const object_name =  reflection.Object.name(data, object);
 //         std.log.warn("object {d}: {s}", .{ i, object_name });
 
-//         const fields = try reflection.Object.fields(data, object);
+//         const fields =  reflection.Object.fields(data, object);
 //         for (0..fields.len) |j| {
-//             const field = fields.in(data, @truncate(j));
-//             const field_name = try reflection.Field.name(data, field);
+//             const field = fields.in(data, j);
+//             const field_name =  reflection.Field.name(data, field);
 //             std.log.warn("  field {d}: {s}", .{ j, field_name });
 //         }
 //     }

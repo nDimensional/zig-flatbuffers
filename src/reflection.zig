@@ -43,16 +43,19 @@ pub const Enum = struct {
         return common.decodeVectorField(4, KeyValueRef, data, ref.offset);
     }
 
-    pub fn name(data: []const u8, ref: EnumRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
+    pub fn name(data: []const u8, ref: EnumRef) String {
+        return common.decodeStringField(0, data, ref.offset) orelse
+            @panic("missing Enum.name field");
     }
 
-    pub fn underlying_type(data: []const u8, ref: EnumRef) !TypeRef {
-        return common.decodeTableField(3, TypeRef, data, ref.offset) orelse error.Required;
+    pub fn underlying_type(data: []const u8, ref: EnumRef) TypeRef {
+        return common.decodeTableField(3, TypeRef, data, ref.offset) orelse
+            @panic("missing Enum.underlying_type field");
     }
 
-    pub fn values(data: []const u8, ref: EnumRef) !Vector(EnumValRef) {
-        return common.decodeVectorField(1, EnumValRef, data, ref.offset) orelse error.Required;
+    pub fn values(data: []const u8, ref: EnumRef) Vector(EnumValRef) {
+        return common.decodeVectorField(1, EnumValRef, data, ref.offset) orelse
+            @panic("missing Enum.values field");
     }
 };
 
@@ -66,8 +69,9 @@ pub const EnumVal = struct {
         return common.decodeVectorField(4, String, data, ref.offset);
     }
 
-    pub fn name(data: []const u8, ref: EnumValRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
+    pub fn name(data: []const u8, ref: EnumValRef) String {
+        return common.decodeStringField(0, data, ref.offset) orelse
+            @panic("missing EnumVal.name field");
     }
 
     pub fn value(data: []const u8, ref: EnumValRef) i64 {
@@ -105,16 +109,18 @@ pub const Field = struct {
         return common.decodeScalarField(8, bool, data, ref.offset, false);
     }
 
-    pub fn name(data: []const u8, ref: FieldRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
+    pub fn name(data: []const u8, ref: FieldRef) String {
+        return common.decodeStringField(0, data, ref.offset) orelse
+            @panic("missing Field.name field");
     }
 
     pub fn required(data: []const u8, ref: FieldRef) bool {
         return common.decodeScalarField(7, bool, data, ref.offset, false);
     }
 
-    pub fn @"type"(data: []const u8, ref: FieldRef) !TypeRef {
-        return common.decodeTableField(1, TypeRef, data, ref.offset) orelse error.Required;
+    pub fn @"type"(data: []const u8, ref: FieldRef) TypeRef {
+        return common.decodeTableField(1, TypeRef, data, ref.offset) orelse
+            @panic("missing Field.type field");
     }
 };
 
@@ -124,8 +130,9 @@ pub const KeyValueRef = packed struct {
 };
 
 pub const KeyValue = struct {
-    pub fn key(data: []const u8, ref: KeyValueRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
+    pub fn key(data: []const u8, ref: KeyValueRef) String {
+        return common.decodeStringField(0, data, ref.offset) orelse
+            @panic("missing KeyValue.key field");
     }
 
     pub fn value(data: []const u8, ref: KeyValueRef) ?String {
@@ -143,16 +150,18 @@ pub const Object = struct {
         return common.decodeVectorField(5, KeyValueRef, data, ref.offset);
     }
 
-    pub fn fields(data: []const u8, ref: ObjectRef) !Vector(FieldRef) {
-        return common.decodeVectorField(1, FieldRef, data, ref.offset) orelse error.Required;
+    pub fn fields(data: []const u8, ref: ObjectRef) Vector(FieldRef) {
+        return common.decodeVectorField(1, FieldRef, data, ref.offset) orelse
+            @panic("missing Object.fields field");
     }
 
     pub fn is_struct(data: []const u8, ref: ObjectRef) bool {
         return common.decodeScalarField(2, bool, data, ref.offset, false);
     }
 
-    pub fn name(data: []const u8, ref: ObjectRef) !String {
-        return common.decodeStringField(0, data, ref.offset) orelse error.Required;
+    pub fn name(data: []const u8, ref: ObjectRef) String {
+        return common.decodeStringField(0, data, ref.offset) orelse
+            @panic("missing Object.name field");
     }
 };
 
@@ -162,8 +171,9 @@ pub const SchemaRef = packed struct {
 };
 
 pub const Schema = struct {
-    pub fn enums(data: []const u8, ref: SchemaRef) !Vector(EnumRef) {
-        return common.decodeVectorField(1, EnumRef, data, ref.offset) orelse error.Required;
+    pub fn enums(data: []const u8, ref: SchemaRef) Vector(EnumRef) {
+        return common.decodeVectorField(1, EnumRef, data, ref.offset) orelse
+            @panic("missing Schema.enums field");
     }
 
     pub fn file_ext(data: []const u8, ref: SchemaRef) ?String {
@@ -174,8 +184,9 @@ pub const Schema = struct {
         return common.decodeStringField(2, data, ref.offset);
     }
 
-    pub fn objects(data: []const u8, ref: SchemaRef) !Vector(ObjectRef) {
-        return common.decodeVectorField(0, ObjectRef, data, ref.offset) orelse error.Required;
+    pub fn objects(data: []const u8, ref: SchemaRef) Vector(ObjectRef) {
+        return common.decodeVectorField(0, ObjectRef, data, ref.offset) orelse
+            @panic("missing Schema.objects field");
     }
 
     pub fn root_table(data: []const u8, ref: SchemaRef) ?ObjectRef {
@@ -193,12 +204,12 @@ pub const Type = struct {
         return common.decodeScalarField(4, u32, data, ref.offset, 4);
     }
 
-    pub fn base_type(data: []const u8, ref: TypeRef) !BaseType {
-        return try common.decodeEnumField(0, BaseType, data, ref.offset, BaseType.None);
+    pub fn base_type(data: []const u8, ref: TypeRef) BaseType {
+        return common.decodeEnumField(0, BaseType, data, ref.offset, BaseType.None);
     }
 
-    pub fn element(data: []const u8, ref: TypeRef) !BaseType {
-        return try common.decodeEnumField(1, BaseType, data, ref.offset, BaseType.None);
+    pub fn element(data: []const u8, ref: TypeRef) BaseType {
+        return common.decodeEnumField(1, BaseType, data, ref.offset, BaseType.None);
     }
 
     pub fn element_size(data: []const u8, ref: TypeRef) u32 {
@@ -218,3 +229,10 @@ pub fn decodeRoot(data: []const u8) SchemaRef {
     const offset = std.mem.readInt(u32, data[0..4], .little);
     return .{ .offset = offset };
 }
+
+// pub fn validateRoot(data: []const u8) !void {
+//     if (data.len < 8)
+//         return error.TooSmall;
+
+//     const root = decodeRoot(data);
+// }
