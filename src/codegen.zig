@@ -1,11 +1,11 @@
 const std = @import("std");
 
-const common = @import("common.zig");
-const String = common.String;
-const Vector = common.Vector;
-const Buffer = common.Buffer;
+const flatbuffers = @import("flatbuffers.zig");
+const String = flatbuffers.String;
+const Vector = flatbuffers.Vector;
+const Buffer = flatbuffers.Buffer;
 
-const reflection = @import("reflection.zig");
+const reflection = @import("reflection2.zig");
 
 const Generator = struct {
     data: Buffer,
@@ -37,11 +37,10 @@ const Generator = struct {
         try writer.writeAll(
             \\const std = @import("std");
             \\
-            \\const common = @import("common.zig");
-            \\const Kind = common.Kind;
-            \\const String = common.String;
-            \\const Vector = common.Vector;
-            \\const Buffer = common.Buffer;
+            \\const flatbuffers = @import("flatbuffers.zig");
+            \\const String = flatbuffers.String;
+            \\const Vector = flatbuffers.Vector;
+            \\const Buffer = flatbuffers.Buffer;
             \\
             \\
         );
@@ -127,7 +126,7 @@ const Generator = struct {
             try writer.print("pub const {s} = packed struct", .{enum_name});
             try writer.writeAll(" {\n");
             try writer.print(
-                \\    pub const kind = Kind{{
+                \\    pub const kind = flatbuffers.Kind{{
                 \\        .BitFlags = .{{
                 \\            .backing_integer = {s},
                 \\            .flags = &.{{ {s} }},
@@ -172,7 +171,7 @@ const Generator = struct {
 
         try writer.print(
             \\pub const {s}Ref = packed struct {{
-            \\    pub const kind = Kind.Table;
+            \\    pub const kind = flatbuffers.Kind.Table;
             \\    offset: u32,
             \\}};
             \\
@@ -215,7 +214,7 @@ const Generator = struct {
                     try writer.print(
                         \\ bool {{
                         \\        const field_id = {d};
-                        \\        return common.decodeScalarField(field_id, bool, data, ref.offset, {});
+                        \\        return flatbuffers.decodeScalarField(field_id, bool, data, ref.offset, {});
                         \\    }}
                     , .{ field_id, default_integer != 0 });
                 },
@@ -227,7 +226,7 @@ const Generator = struct {
                         try writer.print(
                             \\ {s} {{
                             \\        const field_id = {d};
-                            \\        return common.decodeScalarField(field_id, {s}, data, ref.offset, {d});
+                            \\        return flatbuffers.decodeScalarField(field_id, {s}, data, ref.offset, {d});
                             \\    }}
                         , .{ type_name, field_id, type_name, default_integer });
                     } else {
@@ -240,7 +239,7 @@ const Generator = struct {
                             try writer.print(
                                 \\ {s} {{
                                 \\        const field_id = {d};
-                                \\        return common.decodeBitFlagsField(field_id, {s}, data, ref.offset, {s}{{}});
+                                \\        return flatbuffers.decodeBitFlagsField(field_id, {s}, data, ref.offset, {s}{{}});
                                 \\    }}
                             , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
                         } else {
@@ -250,7 +249,7 @@ const Generator = struct {
                             try writer.print(
                                 \\ {s} {{
                                 \\        const field_id = {d};
-                                \\        return common.decodeEnumField(field_id, {s}, data, ref.offset, {s}.{s});
+                                \\        return flatbuffers.decodeEnumField(field_id, {s}, data, ref.offset, {s}.{s});
                                 \\    }}
                             , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
                         }
@@ -262,24 +261,24 @@ const Generator = struct {
                     try writer.print(
                         \\ {s} {{
                         \\        const field_id = {d};
-                        \\        return common.decodeScalarField(field_id, {s}, data, ref.offset, {d});
+                        \\        return flatbuffers.decodeScalarField(field_id, {s}, data, ref.offset, {d});
                         \\    }}
                     , .{ type_name, field_id, type_name, default_real });
                 },
                 .String => {
                     if (required) {
                         try writer.print(
-                            \\ String {{
+                            \\ flatbuffers.String {{
                             \\        const field_id = {d};
-                            \\        return common.decodeStringField(field_id, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeStringField(field_id, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
                         , .{ field_id, object_name, field_name });
                     } else {
                         try writer.print(
-                            \\ ?String {{
+                            \\ ?flatbuffers.String {{
                             \\        const field_id = {d};
-                            \\        return common.decodeStringField(field_id, data, ref.offset);
+                            \\        return flatbuffers.decodeStringField(field_id, data, ref.offset);
                             \\    }}
                         , .{field_id});
                     }
@@ -295,7 +294,7 @@ const Generator = struct {
                             try element_name_writer.writeAll(scalar_name);
                         },
                         .String => {
-                            try element_name_writer.writeAll("String");
+                            try element_name_writer.writeAll("flatbuffers.String");
                         },
                         .Vector => return error.InvalidFieldType,
                         .Obj => {
@@ -312,17 +311,17 @@ const Generator = struct {
 
                     if (required) {
                         try writer.print(
-                            \\ Vector({s}) {{
+                            \\ flatbuffers.Vector({s}) {{
                             \\        const field_id = {d};
-                            \\        return common.decodeVectorField(field_id, {s}, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeVectorField(field_id, {s}, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
                         , .{ element_name, field_id, element_name, object_name, field_name });
                     } else {
                         try writer.print(
-                            \\ ?Vector({s}) {{
+                            \\ ?flatbuffers.Vector({s}) {{
                             \\        const field_id = {d};
-                            \\        return common.decodeVectorField(field_id, {s}, data, ref.offset);
+                            \\        return flatbuffers.decodeVectorField(field_id, {s}, data, ref.offset);
                             \\    }}
                         , .{ element_name, field_id, element_name });
                     }
@@ -336,7 +335,7 @@ const Generator = struct {
                         try writer.print(
                             \\ {s}Ref {{
                             \\        const field_id = {d};
-                            \\        return common.decodeTableField(field_id, {s}Ref, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeTableField(field_id, {s}Ref, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
                         , .{ field_object_name, field_id, field_object_name, object_name, field_name });
@@ -344,7 +343,7 @@ const Generator = struct {
                         try writer.print(
                             \\ ?{s}Ref {{
                             \\        const field_id = {d};
-                            \\        return common.decodeTableField(field_id, {s}Ref, data, ref.offset);
+                            \\        return flatbuffers.decodeTableField(field_id, {s}Ref, data, ref.offset);
                             \\    }}
                         , .{ field_object_name, field_id, field_object_name });
                     }
@@ -485,7 +484,6 @@ fn getIntegerName(base_type: reflection.BaseType) ![]const u8 {
 }
 
 fn getScalarName(base_type: reflection.BaseType) ![]const u8 {
-    std.log.err("getScalarName({s})", .{@tagName(base_type)});
     return switch (base_type) {
         .Bool => "bool",
         .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => getIntegerName(base_type),
