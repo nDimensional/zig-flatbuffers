@@ -183,24 +183,10 @@ const Generator = struct {
         // write declaration for Unions. The name of the EnumVals are the names of the tables.
         switch (base_type) {
             .UType => {
-                const enum_values = reflection.Enum.values(self.data, enum_ref);
-
-                // try writer.print("pub const {s}Tag = enum(u8)", .{enum_name});
-                // try writer.writeAll(" {\n");
-                // for (0..enum_values.len) |j| {
-                //     const enum_val_ref = enum_values.in(self.data, j);
-                //     const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
-
-                //     if (j == 0 and !std.mem.eql(u8, enum_val_name, "NONE"))
-                //         return error.InvalidUnionValue;
-
-                //     try writer.print("    {s} = {d},\n", .{ enum_val_name, enum_val_value });
-                // }
-
-                // try writer.writeAll("};\n\n");
-
                 try writer.print("pub const {s} = union(enum(u8))", .{enum_name});
                 try writer.writeAll(" {\n");
+
+                const enum_values = reflection.Enum.values(self.data, enum_ref);
                 for (0..enum_values.len) |j| {
                     const enum_val_ref = enum_values.in(self.data, j);
                     const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
@@ -232,8 +218,8 @@ const Generator = struct {
             var flags_buffer: [256]u8 = undefined;
             var flags_writer = std.io.Writer.fixed(&flags_buffer);
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(self.data, j);
-                const enum_val_value = reflection.EnumVal.value(self.data, enum_val);
+                const enum_val_ref = enum_values.in(self.data, j);
+                const enum_val_value = reflection.EnumVal.value(self.data, enum_val_ref);
                 if (j > 0)
                     try flags_writer.writeAll(", ");
                 try flags_writer.print("{d}", .{enum_val_value});
@@ -255,8 +241,8 @@ const Generator = struct {
             , .{ enum_type, flags });
 
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(self.data, j);
-                const enum_val_name = reflection.EnumVal.name(self.data, enum_val);
+                const enum_val_ref = enum_values.in(self.data, j);
+                const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
                 try writer.print("    {s}: bool = false,\n", .{enum_val_name});
             }
 
@@ -266,16 +252,16 @@ const Generator = struct {
             try writer.writeAll(" {\n");
             const enum_values = reflection.Enum.values(self.data, enum_ref);
             for (0..enum_values.len) |j| {
-                const enum_value = enum_values.in(self.data, j);
+                const enum_val_ref = enum_values.in(self.data, j);
 
-                if (reflection.EnumVal.documentation(self.data, enum_value)) |documentation|
+                if (reflection.EnumVal.documentation(self.data, enum_val_ref)) |documentation|
                     for (0..documentation.len) |k|
                         try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
-                const enum_value_name = reflection.EnumVal.name(self.data, enum_value);
-                const enum_value_value = reflection.EnumVal.value(self.data, enum_value);
+                const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
+                const enum_val_value = reflection.EnumVal.value(self.data, enum_val_ref);
 
-                try writer.print("    {s} = {d},\n", .{ enum_value_name, enum_value_value });
+                try writer.print("    {s} = {d},\n", .{ enum_val_name, enum_val_value });
             }
 
             try writer.writeAll("};\n\n");
@@ -299,16 +285,16 @@ const Generator = struct {
         try writer.writeAll(" {\n");
 
         for (object_field_map, 0..) |j, field_id| {
-            const field = object_fields.in(self.data, j);
-            const field_name = reflection.Field.name(self.data, field);
-            const field_type = reflection.Field.type(self.data, field);
-            if (field_id != reflection.Field.id(self.data, field))
+            const field_ref = object_fields.in(self.data, j);
+            const field_name = reflection.Field.name(self.data, field_ref);
+            const field_type = reflection.Field.type(self.data, field_ref);
+            if (field_id != reflection.Field.id(self.data, field_ref))
                 return error.InvalidFieldId;
 
-            const field_offset = reflection.Field.offset(self.data, field);
-            const deprecated = reflection.Field.deprecated(self.data, field);
-            const required = reflection.Field.required(self.data, field);
-            const optional = reflection.Field.optional(self.data, field);
+            const field_offset = reflection.Field.offset(self.data, field_ref);
+            const deprecated = reflection.Field.deprecated(self.data, field_ref);
+            const required = reflection.Field.required(self.data, field_ref);
+            const optional = reflection.Field.optional(self.data, field_ref);
 
             if (field_offset != @sizeOf(u32) + @sizeOf(u16) * field_id)
                 return error.InvalidFieldOffset;
@@ -332,7 +318,7 @@ const Generator = struct {
                 continue;
             }
 
-            if (reflection.Field.documentation(self.data, field)) |documentation|
+            if (reflection.Field.documentation(self.data, field_ref)) |documentation|
                 for (0..documentation.len) |k|
                     try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
@@ -340,7 +326,7 @@ const Generator = struct {
 
             switch (field_base_type) {
                 .Bool => {
-                    const default_integer = reflection.Field.default_integer(self.data, field);
+                    const default_integer = reflection.Field.default_integer(self.data, field_ref);
                     try writer.print(
                         \\ bool {{
                         \\        return flatbuffers.decodeScalarField(bool, {d}, data, ref.offset, {});
@@ -348,7 +334,7 @@ const Generator = struct {
                     , .{ field_id, default_integer != 0 });
                 },
                 .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
-                    const default_integer = reflection.Field.default_integer(self.data, field);
+                    const default_integer = reflection.Field.default_integer(self.data, field_ref);
                     const field_enum_index = reflection.Type.index(self.data, field_type);
                     if (field_enum_index < 0) {
                         const type_name = try getScalarName(field_base_type);
@@ -387,7 +373,7 @@ const Generator = struct {
                 },
                 .Float, .Double => {
                     const type_name = try getScalarName(field_base_type);
-                    const default_real = reflection.Field.default_real(self.data, field);
+                    const default_real = reflection.Field.default_real(self.data, field_ref);
                     try writer.print(
                         \\ {s} {{
                         \\        return flatbuffers.decodeScalarField({s}, {d}, data, ref.offset, {d});
@@ -420,18 +406,14 @@ const Generator = struct {
                             const scalar_name = try getScalarName(element);
                             try element_name_writer.writeAll(scalar_name);
                         },
-                        .String => {
-                            try element_name_writer.writeAll("flatbuffers.String");
-                        },
-                        .Vector => return error.InvalidFieldType,
+                        .String => try element_name_writer.writeAll("flatbuffers.String"),
                         .Obj => {
                             const element_object_index = reflection.Type.index(self.data, field_type);
-                            const element_object = try self.getObject(element_object_index);
-                            const element_object_name = reflection.Object.name(self.data, element_object);
+                            const element_object_ref = try self.getObject(element_object_index);
+                            const element_object_name = reflection.Object.name(self.data, element_object_ref);
                             try element_name_writer.print("{s}Ref", .{element_object_name});
                         },
-                        .Union, .Array, .Vector64 => return error.NotImplemented,
-                        .None, .UType, .MaxBaseType => return error.InvalidFieldType,
+                        .Array, .UType, .Union, .Vector, .Vector64, .None, .MaxBaseType => return error.InvalidFieldType,
                     }
 
                     const element_name = element_name_buffer[0..element_name_writer.end];
@@ -453,8 +435,8 @@ const Generator = struct {
                 },
                 .Obj => {
                     const field_object_index = reflection.Type.index(self.data, field_type);
-                    const field_object = try self.getObject(field_object_index);
-                    const field_object_name = reflection.Object.name(self.data, field_object);
+                    const field_object_ref = try self.getObject(field_object_index);
+                    const field_object_name = reflection.Object.name(self.data, field_object_ref);
 
                     if (required) {
                         try writer.print(
@@ -521,21 +503,21 @@ const Generator = struct {
         try writer.writeAll(" {\n");
 
         for (object_field_map, 0..) |j, field_id| {
-            const field = object_fields.in(self.data, j);
-            const field_name = reflection.Field.name(self.data, field);
-            const field_type = reflection.Field.type(self.data, field);
-            if (field_id != reflection.Field.id(self.data, field))
+            const field_ref = object_fields.in(self.data, j);
+            const field_name = reflection.Field.name(self.data, field_ref);
+            const field_type = reflection.Field.type(self.data, field_ref);
+            if (field_id != reflection.Field.id(self.data, field_ref))
                 return error.InvalidFieldId;
 
             // const field_offset = reflection.Field.offset(self.data, field);
 
-            const required = reflection.Field.required(self.data, field);
-            const optional = reflection.Field.optional(self.data, field);
-            const deprecated = reflection.Field.deprecated(self.data, field);
+            const required = reflection.Field.required(self.data, field_ref);
+            const optional = reflection.Field.optional(self.data, field_ref);
+            const deprecated = reflection.Field.deprecated(self.data, field_ref);
             if (required or optional or deprecated)
                 return error.InvalidStructField;
 
-            if (reflection.Field.documentation(self.data, field)) |documentation|
+            if (reflection.Field.documentation(self.data, field_ref)) |documentation|
                 for (0..documentation.len) |k|
                     try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
@@ -569,8 +551,8 @@ const Generator = struct {
 
         @memset(field_map, empty);
         for (0..fields.len) |i| {
-            const field = fields.in(self.data, i);
-            const field_id = reflection.Field.id(self.data, field);
+            const field_ref = fields.in(self.data, i);
+            const field_id = reflection.Field.id(self.data, field_ref);
             if (field_id >= fields.len)
                 return error.InvalidFieldId;
             if (field_map[field_id] != empty)
@@ -603,9 +585,10 @@ fn findAttribute(data: Buffer, attributes: Vector(reflection.KeyValueRef), key: 
 fn findEnumValue(data: Buffer, enum_ref: reflection.EnumRef, value: i64) !reflection.EnumValRef {
     const enum_values = reflection.Enum.values(data, enum_ref);
     for (0..enum_values.len) |k| {
-        const enum_value_ref = enum_values.in(data, k);
-        if (reflection.EnumVal.value(data, enum_value_ref) == value) {
-            return enum_value_ref;
+        const enum_val_ref = enum_values.in(data, k);
+        const enum_val_value = reflection.EnumVal.value(data, enum_val_ref);
+        if (enum_val_value == value) {
+            return enum_val_ref;
         }
     }
 
