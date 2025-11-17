@@ -3,58 +3,120 @@ const std = @import("std");
 const common = @import("common.zig");
 const String = common.String;
 const Vector = common.Vector;
+const Buffer = common.Buffer;
 
 const reflection = @import("reflection.zig");
 
-pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
-    const schema = reflection.decodeRoot(data);
+const Generator = struct {
+    data: Buffer,
 
-    try writer.writeAll(
-        \\const std = @import("std");
-        \\
-        \\const common = @import("common.zig");
-        \\const Kind = common.Kind;
-        \\const String = common.String;
-        \\const Vector = common.Vector;
-        \\
-        \\
-    );
+    root: reflection.SchemaRef,
+    enums: Vector(reflection.EnumRef),
+    objects: Vector(reflection.ObjectRef),
 
-    if (reflection.Schema.file_ident(data, schema)) |file_identifier|
-        try writer.print("pub const file_identifier = \"{s}\";\n", .{file_identifier});
+    field_id_buffer: [1024]usize = undefined,
 
-    if (reflection.Schema.file_ext(data, schema)) |file_extension|
-        try writer.print("pub const file_extension = \"{s}\";\n", .{file_extension});
+    pub fn init(data: Buffer) !Generator {
+        const schema = reflection.decodeRoot(data);
+        const enums = reflection.Schema.enums(data, schema);
+        const objects = reflection.Schema.objects(data, schema);
 
-    try writer.writeByte('\n');
-
-    const enums = reflection.Schema.enums(data, schema);
-    for (0..enums.len) |i| {
-        const enum_item = enums.in(data, i);
-        const enum_name = reflection.Enum.name(data, enum_item);
-        const underlying_type = reflection.Enum.underlying_type(data, enum_item);
-        const underlying_base_type = reflection.Type.base_type(data, underlying_type);
-        const enum_type = switch (underlying_base_type) {
-            .Byte => "i8",
-            .UByte => "u8",
-            .Short => "i16",
-            .UShort => "u16",
-            .Int => "i32",
-            .UInt => "u32",
-            .Long => "i64",
-            .ULong => "u64",
-            else => return error.InvalidEnum,
+        return Generator{
+            .data = data,
+            .root = schema,
+            .enums = enums,
+            .objects = objects,
         };
+    }
 
-        const is_bit_flag = hasBitFlags(data, enum_item);
+    pub inline fn deinit(self: *Generator) void {
+        _ = self;
+    }
+
+    pub fn generate(self: *Generator, writer: *std.io.Writer) !void {
+        try writer.writeAll(
+            \\const std = @import("std");
+            \\
+            \\const common = @import("common.zig");
+            \\const Kind = common.Kind;
+            \\const String = common.String;
+            \\const Vector = common.Vector;
+            \\const Buffer = common.Buffer;
+            \\
+            \\
+        );
+
+        if (reflection.Schema.file_ident(self.data, self.root)) |file_identifier|
+            try writer.print("pub const file_identifier = \"{s}\";\n", .{file_identifier});
+
+        if (reflection.Schema.file_ext(self.data, self.root)) |file_extension|
+            try writer.print("pub const file_extension = \"{s}\";\n", .{file_extension});
+
+        try writer.writeByte('\n');
+
+        for (0..self.enums.len) |i|
+            try self.writeEnumDeclaration(writer, self.enums.in(self.data, i));
+
+        for (0..self.objects.len) |i| {
+            const object_ref = self.objects.in(self.data, i);
+            if (reflection.Object.is_struct(self.data, object_ref)) {
+                try self.writeStructDeclaration(writer, object_ref);
+            } else {
+                try self.writeTableDeclaration(writer, object_ref);
+            }
+        }
+
+        if (reflection.Schema.root_table(self.data, self.root)) |root_table| {
+            const root_table_name = reflection.Object.name(self.data, root_table);
+            try writer.print("pub fn decodeRoot(data: Buffer) {s}Ref ", .{root_table_name});
+            try writer.writeAll(
+                \\{
+                \\    const offset = std.mem.readInt(u32, data[0..4], .little);
+                \\    return .{ .offset = offset };
+                \\}
+                \\
+            );
+        }
+
+        try writer.flush();
+    }
+
+    inline fn getEnum(self: *Generator, enum_index: i32) !reflection.EnumRef {
+        if (enum_index < 0 or enum_index >= self.enums.len)
+            return error.InvalidEnumIndex;
+
+        return self.enums.in(self.data, @intCast(enum_index));
+    }
+
+    inline fn getObject(self: *Generator, object_index: i32) !reflection.ObjectRef {
+        if (object_index < 0 or object_index >= self.objects.len)
+            return error.InvalidEnumIndex;
+
+        return self.objects.in(self.data, @intCast(object_index));
+    }
+
+    fn writeEnumDeclaration(self: *Generator, writer: *std.io.Writer, enum_item: reflection.EnumRef) !void {
+        const enum_name = reflection.Enum.name(self.data, enum_item);
+
+        const base_type = reflection.Type.base_type(
+            self.data,
+            reflection.Enum.underlying_type(self.data, enum_item),
+        );
+
+        const enum_type = try getIntegerName(switch (base_type) {
+            .UType => reflection.BaseType.UByte,
+            else => base_type,
+        });
+
+        const is_bit_flag = hasBitFlags(self.data, enum_item);
         if (is_bit_flag) {
-            const enum_values = reflection.Enum.values(data, enum_item);
+            const enum_values = reflection.Enum.values(self.data, enum_item);
 
             var flags_buffer: [256]u8 = undefined;
             var flags_writer = std.io.Writer.fixed(&flags_buffer);
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(data, j);
-                const enum_val_value = reflection.EnumVal.value(data, enum_val);
+                const enum_val = enum_values.in(self.data, j);
+                const enum_val_value = reflection.EnumVal.value(self.data, enum_val);
                 if (j > 0)
                     try flags_writer.writeAll(", ");
                 try flags_writer.print("{d}", .{enum_val_value});
@@ -67,17 +129,17 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
             try writer.print(
                 \\    pub const kind = Kind{{
                 \\        .BitFlags = .{{
-                \\            .backing_integer = u64,
+                \\            .backing_integer = {s},
                 \\            .flags = &.{{ {s} }},
                 \\        }},
                 \\    }};
                 \\
                 \\
-            , .{flags});
+            , .{ enum_type, flags });
 
             for (0..enum_values.len) |j| {
-                const enum_val = enum_values.in(data, j);
-                const enum_val_name = reflection.EnumVal.name(data, enum_val);
+                const enum_val = enum_values.in(self.data, j);
+                const enum_val_name = reflection.EnumVal.name(self.data, enum_val);
                 try writer.print("    {s}: bool = false,\n", .{enum_val_name});
             }
 
@@ -85,16 +147,16 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
         } else {
             try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
             try writer.writeAll(" {\n");
-            const enum_values = reflection.Enum.values(data, enum_item);
+            const enum_values = reflection.Enum.values(self.data, enum_item);
             for (0..enum_values.len) |j| {
-                const enum_value = enum_values.in(data, j);
+                const enum_value = enum_values.in(self.data, j);
 
-                // if (reflection.EnumVal.documentation(data, enum_value)) |documentation|
-                //     for (0..documentation.len) |k|
-                //         try writer.print("    /// {s}\n", .{documentation.in(data, k)});
+                if (reflection.EnumVal.documentation(self.data, enum_value)) |documentation|
+                    for (0..documentation.len) |k|
+                        try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
-                const enum_value_name = reflection.EnumVal.name(data, enum_value);
-                const enum_value_value = reflection.EnumVal.value(data, enum_value);
+                const enum_value_name = reflection.EnumVal.name(self.data, enum_value);
+                const enum_value_value = reflection.EnumVal.value(self.data, enum_value);
 
                 try writer.print("    {s} = {d},\n", .{ enum_value_name, enum_value_value });
             }
@@ -103,227 +165,288 @@ pub fn createDecoder(data: []const u8, writer: *std.io.Writer) !void {
         }
     }
 
-    const objects = reflection.Schema.objects(data, schema);
-    for (0..objects.len) |i| {
-        const object = objects.in(data, i);
+    fn writeTableDeclaration(self: *Generator, writer: *std.io.Writer, object: reflection.ObjectRef) !void {
+        const object_name = reflection.Object.name(self.data, object);
+        const object_fields = reflection.Object.fields(self.data, object);
+        const object_field_map = try self.getFieldMap(object_fields);
 
-        // if (reflection.Object.documentation(data, object)) |documentation|
-        //     for (0..documentation.len) |j|
-        //         try writer.print("/// {s}\n", .{documentation.in(data, j)});
+        try writer.print(
+            \\pub const {s}Ref = packed struct {{
+            \\    pub const kind = Kind.Table;
+            \\    offset: u32,
+            \\}};
+            \\
+            \\
+        , .{object_name});
 
-        const object_name = reflection.Object.name(data, object);
-        const object_fields = reflection.Object.fields(data, object);
+        try writer.print("pub const {s} = struct", .{object_name});
+        try writer.writeAll(" {\n");
 
-        if (reflection.Object.is_struct(data, object)) {
-            return error.NotImplemented;
-        } else {
-            try writer.print(
-                \\pub const {s}Ref = packed struct {{
-                \\    pub const kind = Kind.Table;
-                \\    offset: u32,
-                \\}};
-                \\
-                \\
-            , .{object_name});
+        for (object_field_map, 0..) |j, field_id| {
+            const field = object_fields.in(self.data, j);
+            const field_name = reflection.Field.name(self.data, field);
+            const field_type = reflection.Field.type(self.data, field);
+            if (field_id != reflection.Field.id(self.data, field))
+                return error.InvalidFieldId;
 
-            try writer.print("pub const {s} = struct", .{object_name});
-            try writer.writeAll(" {\n");
+            const field_offset = reflection.Field.offset(self.data, field);
+            const deprecated = reflection.Field.deprecated(self.data, field);
+            const required = reflection.Field.required(self.data, field);
+            // const optional = reflection.Field.optional(self.data, field);
 
-            for (0..object_fields.len) |j| {
-                const field = object_fields.in(data, j);
-                const field_name = reflection.Field.name(data, field);
-                const field_type = reflection.Field.type(data, field);
-                const field_id = reflection.Field.id(data, field);
-                const deprecated = reflection.Field.deprecated(data, field);
-                const required = reflection.Field.required(data, field);
+            if (field_offset != @sizeOf(u32) + @sizeOf(u16) * field_id)
+                return error.InvalidFieldOffset;
 
-                if (deprecated) continue;
+            if (deprecated) continue;
 
-                // if (field_offset != 4 + 2 * field_id)
-                //     return error.InvalidFieldOffset;
+            if (reflection.Field.documentation(self.data, field)) |documentation|
+                for (0..documentation.len) |k|
+                    try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
-                // if (reflection.Field.documentation(data, field)) |documentation|
-                //     for (0..documentation.len) |k|
-                //         try writer.print("    /// {s}\n", .{documentation.in(data, k)});
+            try writer.print("    pub fn @\"{s}\"(data: Buffer, ref: {s}Ref)", .{ field_name, object_name });
 
-                try writer.print("    pub fn @\"{s}\"(data: []const u8, ref: {s}Ref)", .{ field_name, object_name });
+            const field_base_type = reflection.Type.base_type(self.data, field_type);
+            const field_base_size = reflection.Type.base_size(self.data, field_type);
+            _ = field_base_size;
 
-                const field_base_type = reflection.Type.base_type(data, field_type);
-                // const field_base_size = reflection.Type.base_size(data, field_type);
-
-                switch (field_base_type) {
-                    .Bool => {
-                        const default_integer = reflection.Field.default_integer(data, field);
-                        const default_bool = if (default_integer == 0) "false" else "true";
-                        try writer.print(
-                            \\ bool {{
-                            \\        return common.decodeScalarField({d}, bool, data, ref.offset, {s});
-                            \\    }}
-                        , .{ field_id, default_bool });
-                    },
-                    .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
-                        // check if enum
-                        const default_integer = reflection.Field.default_integer(data, field);
-                        const field_enum_index = reflection.Type.index(data, field_type);
-                        if (field_enum_index < 0) {
-                            const t = try getScalarName(field_base_type);
-                            try writer.print(
-                                \\ {s} {{
-                                \\        return common.decodeScalarField({d}, {s}, data, ref.offset, {d});
-                                \\    }}
-                            , .{ t, field_id, t, default_integer });
-                        } else {
-                            if (field_enum_index >= enums.len)
-                                return error.InvalidEnumIndex;
-
-                            const field_enum = enums.in(data, @intCast(field_enum_index));
-                            const field_enum_name = reflection.Enum.name(data, field_enum);
-
-                            const is_bit_flag = hasBitFlags(data, field_enum);
-                            if (is_bit_flag) {
-                                // TODO: default bit flag values
-                                try writer.print(
-                                    \\ {s} {{
-                                    \\        return common.decodeBitFlagsField({d}, {s}, data, ref.offset, {s}{{}});
-                                    \\    }}
-                                , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
-                            } else {
-                                const default_enum_value = try findEnumValue(data, field_enum, default_integer);
-                                const default_enum_name = reflection.EnumVal.name(data, default_enum_value);
-
-                                try writer.print(
-                                    \\ {s} {{
-                                    \\        return common.decodeEnumField({d}, {s}, data, ref.offset, {s}.{s});
-                                    \\    }}
-                                , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
-                            }
-                        }
-                    },
-                    .Float, .Double => {
-                        const t = try getScalarName(field_base_type);
-                        const default_real = reflection.Field.default_real(data, field);
+            switch (field_base_type) {
+                .Bool => {
+                    const default_integer = reflection.Field.default_integer(self.data, field);
+                    try writer.print(
+                        \\ bool {{
+                        \\        const field_id = {d};
+                        \\        return common.decodeScalarField(field_id, bool, data, ref.offset, {});
+                        \\    }}
+                    , .{ field_id, default_integer != 0 });
+                },
+                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
+                    const default_integer = reflection.Field.default_integer(self.data, field);
+                    const field_enum_index = reflection.Type.index(self.data, field_type);
+                    if (field_enum_index < 0) {
+                        const type_name = try getScalarName(field_base_type);
                         try writer.print(
                             \\ {s} {{
-                            \\        return common.decodeScalarField({d}, {s}, data, ref.offset, {d});
+                            \\        const field_id = {d};
+                            \\        return common.decodeScalarField(field_id, {s}, data, ref.offset, {d});
                             \\    }}
-                        , .{ t, field_id, t, default_real });
-                    },
-                    .String => {
-                        if (required) {
+                        , .{ type_name, field_id, type_name, default_integer });
+                    } else {
+                        const field_enum = try self.getEnum(field_enum_index);
+                        const field_enum_name = reflection.Enum.name(self.data, field_enum);
+
+                        const is_bit_flag = hasBitFlags(self.data, field_enum);
+                        if (is_bit_flag) {
+                            // TODO: default bit flag values
                             try writer.print(
-                                \\ String {{
-                                \\        return common.decodeStringField({d}, data, ref.offset) orelse
-                                \\            @panic("missing {s}.{s} field");
+                                \\ {s} {{
+                                \\        const field_id = {d};
+                                \\        return common.decodeBitFlagsField(field_id, {s}, data, ref.offset, {s}{{}});
                                 \\    }}
-                            , .{ field_id, object_name, field_name });
+                            , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
                         } else {
+                            const default_enum_value = try findEnumValue(self.data, field_enum, default_integer);
+                            const default_enum_name = reflection.EnumVal.name(self.data, default_enum_value);
+
                             try writer.print(
-                                \\ ?String {{
-                                \\        return common.decodeStringField({d}, data, ref.offset);
+                                \\ {s} {{
+                                \\        const field_id = {d};
+                                \\        return common.decodeEnumField(field_id, {s}, data, ref.offset, {s}.{s});
                                 \\    }}
-                            , .{field_id});
+                            , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
                         }
-                    },
-                    .Vector => {
-                        var element_name_buffer: [256]u8 = undefined;
-                        var element_name_writer = std.io.Writer.fixed(&element_name_buffer);
+                    }
+                },
+                .Float, .Double => {
+                    const type_name = try getScalarName(field_base_type);
+                    const default_real = reflection.Field.default_real(self.data, field);
+                    try writer.print(
+                        \\ {s} {{
+                        \\        const field_id = {d};
+                        \\        return common.decodeScalarField(field_id, {s}, data, ref.offset, {d});
+                        \\    }}
+                    , .{ type_name, field_id, type_name, default_real });
+                },
+                .String => {
+                    if (required) {
+                        try writer.print(
+                            \\ String {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeStringField(field_id, data, ref.offset) orelse
+                            \\            @panic("missing {s}.{s} field");
+                            \\    }}
+                        , .{ field_id, object_name, field_name });
+                    } else {
+                        try writer.print(
+                            \\ ?String {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeStringField(field_id, data, ref.offset);
+                            \\    }}
+                        , .{field_id});
+                    }
+                },
+                .Vector => {
+                    var element_name_buffer: [256]u8 = undefined;
+                    var element_name_writer = std.io.Writer.fixed(&element_name_buffer);
 
-                        const element = reflection.Type.element(data, field_type);
-                        switch (element) {
-                            .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
-                                const scalar_name = try getScalarName(field_base_type);
-                                try element_name_writer.writeAll(scalar_name);
-                            },
-                            .String => {
-                                try element_name_writer.writeAll("String");
-                            },
-                            .Vector => return error.InvalidFieldType,
-                            .Obj => {
-                                const element_object_index = reflection.Type.index(data, field_type);
-                                if (element_object_index < 0 or element_object_index >= objects.len)
-                                    return error.InvalidObjectIndex;
-                                const element_object = objects.in(data, @intCast(element_object_index));
-                                const element_object_name = reflection.Object.name(data, element_object);
-                                try element_name_writer.writeAll(element_object_name);
-                                try element_name_writer.writeAll("Ref");
-                            },
-                            .Union, .Array, .Vector64 => return error.NotImplemented,
-                            .None, .UType, .MaxBaseType => return error.InvalidFieldType,
-                        }
+                    const element = reflection.Type.element(self.data, field_type);
+                    switch (element) {
+                        .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
+                            const scalar_name = try getScalarName(element);
+                            try element_name_writer.writeAll(scalar_name);
+                        },
+                        .String => {
+                            try element_name_writer.writeAll("String");
+                        },
+                        .Vector => return error.InvalidFieldType,
+                        .Obj => {
+                            const element_object_index = reflection.Type.index(self.data, field_type);
+                            const element_object = try self.getObject(element_object_index);
+                            const element_object_name = reflection.Object.name(self.data, element_object);
+                            try element_name_writer.print("{s}Ref", .{element_object_name});
+                        },
+                        .Union, .Array, .Vector64 => return error.NotImplemented,
+                        .None, .UType, .MaxBaseType => return error.InvalidFieldType,
+                    }
 
-                        const element_name = element_name_buffer[0..element_name_writer.end];
+                    const element_name = element_name_buffer[0..element_name_writer.end];
 
-                        if (required) {
-                            try writer.print(
-                                \\ Vector({s}) {{
-                                \\        return common.decodeVectorField({d}, {s}, data, ref.offset) orelse
-                                \\            @panic("missing {s}.{s} field");
-                                \\    }}
-                            , .{ element_name, field_id, element_name, object_name, field_name });
-                        } else {
-                            try writer.print(
-                                \\ ?Vector({s}) {{
-                                \\        return common.decodeVectorField({d}, {s}, data, ref.offset);
-                                \\    }}
-                            , .{ element_name, field_id, element_name });
-                        }
-                    },
-                    .Obj => {
-                        const field_object_index = reflection.Type.index(data, field_type);
-                        if (field_object_index < 0 or field_object_index >= objects.len)
-                            return error.InvalidObjectIndex;
+                    if (required) {
+                        try writer.print(
+                            \\ Vector({s}) {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeVectorField(field_id, {s}, data, ref.offset) orelse
+                            \\            @panic("missing {s}.{s} field");
+                            \\    }}
+                        , .{ element_name, field_id, element_name, object_name, field_name });
+                    } else {
+                        try writer.print(
+                            \\ ?Vector({s}) {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeVectorField(field_id, {s}, data, ref.offset);
+                            \\    }}
+                        , .{ element_name, field_id, element_name });
+                    }
+                },
+                .Obj => {
+                    const field_object_index = reflection.Type.index(self.data, field_type);
+                    const field_object = try self.getObject(field_object_index);
+                    const field_object_name = reflection.Object.name(self.data, field_object);
 
-                        const field_object = objects.in(data, @intCast(field_object_index));
-                        const field_object_name = reflection.Object.name(data, field_object);
-
-                        if (required) {
-                            try writer.print(
-                                \\ {s}Ref {{
-                                \\        return common.decodeTableField({d}, {s}Ref, data, ref.offset) orelse
-                                \\            @panic("missing {s}.{s} field");
-                                \\    }}
-                            , .{ field_object_name, field_id, field_object_name, object_name, field_name });
-                        } else {
-                            try writer.print(
-                                \\ ?{s}Ref {{
-                                \\        return common.decodeTableField({d}, {s}Ref, data, ref.offset);
-                                \\    }}
-                            , .{ field_object_name, field_id, field_object_name });
-                        }
-                    },
-                    .Union => {},
-                    .Array => {},
-                    .Vector64 => {},
-                    .None, .UType, .MaxBaseType => return error.InvalidFieldType,
-                }
-
-                _ = try writer.splatByte('\n', 2);
+                    if (required) {
+                        try writer.print(
+                            \\ {s}Ref {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeTableField(field_id, {s}Ref, data, ref.offset) orelse
+                            \\            @panic("missing {s}.{s} field");
+                            \\    }}
+                        , .{ field_object_name, field_id, field_object_name, object_name, field_name });
+                    } else {
+                        try writer.print(
+                            \\ ?{s}Ref {{
+                            \\        const field_id = {d};
+                            \\        return common.decodeTableField(field_id, {s}Ref, data, ref.offset);
+                            \\    }}
+                        , .{ field_object_name, field_id, field_object_name });
+                    }
+                },
+                .UType => {
+                    std.log.err("encountered UType", .{});
+                },
+                .Union => {
+                    std.log.err("encountered Union", .{});
+                },
+                .Array => {
+                    std.log.err("encountered Array", .{});
+                },
+                .Vector64 => {
+                    std.log.err("encountered Vector64", .{});
+                },
+                .None, .MaxBaseType => return error.InvalidFieldType,
             }
 
-            try writer.writeAll("};\n\n");
+            _ = try writer.splatByte('\n', 2);
         }
+
+        try writer.writeAll("};\n\n");
     }
 
-    if (reflection.Schema.root_table(data, schema)) |root_table| {
-        const root_table_name = reflection.Object.name(data, root_table);
-        try writer.print("pub fn decodeRoot(data: []const u8) {s}Ref ", .{root_table_name});
-        try writer.writeAll(
-            \\{
-            \\    const offset = std.mem.readInt(u32, data[0..4], .little);
-            \\    return .{ .offset = offset };
-            \\}
-            \\
-        );
-    }
-}
+    fn writeStructDeclaration(self: *Generator, writer: *std.io.Writer, object: reflection.ObjectRef) !void {
+        const object_name = reflection.Object.name(self.data, object);
+        const object_fields = reflection.Object.fields(self.data, object);
+        const object_field_map = try self.getFieldMap(object_fields);
 
-fn hasBitFlags(data: []const u8, enum_ref: reflection.EnumRef) bool {
+        // const object_bytesize = reflection.Object.bytesize(data, object);
+        // const object_minalign = reflection.Object.minalign(data, object);
+
+        try writer.print("pub const @\"{s}\" = struct", .{object_name});
+        try writer.writeAll(" {\n");
+
+        for (object_field_map, 0..) |j, field_id| {
+            const field = object_fields.in(self.data, j);
+            const field_name = reflection.Field.name(self.data, field);
+            const field_type = reflection.Field.type(self.data, field);
+            if (field_id != reflection.Field.id(self.data, field))
+                return error.InvalidFieldId;
+
+            // const field_offset = reflection.Field.offset(self.data, field);
+
+            const required = reflection.Field.required(self.data, field);
+            const optional = reflection.Field.optional(self.data, field);
+            const deprecated = reflection.Field.deprecated(self.data, field);
+            if (required or optional or deprecated)
+                return error.InvalidStructField;
+
+            if (reflection.Field.documentation(self.data, field)) |documentation|
+                for (0..documentation.len) |k|
+                    try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
+
+            const field_base_type = reflection.Type.base_type(self.data, field_type);
+            const field_base_size = reflection.Type.base_size(self.data, field_type);
+            _ = field_base_size;
+
+            switch (field_base_type) {
+                .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
+                    const scalar_name = try getScalarName(field_base_type);
+                    try writer.print("    @\"{s}\": {s}\n", .{ field_name, scalar_name });
+                },
+                .Array => {
+                    @panic("not implemented");
+                },
+                .Obj => {
+                    @panic("not implemented");
+                },
+                else => return error.InvalidStructField,
+            }
+        }
+
+        try writer.writeAll("};\n\n");
+    }
+
+    fn getFieldMap(self: *Generator, fields: Vector(reflection.FieldRef)) ![]const usize {
+        const empty = std.math.maxInt(usize);
+        const field_map = self.field_id_buffer[0..fields.len];
+        @memset(field_map, empty);
+        for (0..fields.len) |i| {
+            const field = fields.in(self.data, i);
+            const field_id = reflection.Field.id(self.data, field);
+            if (field_id >= fields.len)
+                return error.InvalidFieldId;
+            if (field_map[field_id] != empty)
+                return error.DuplicateFieldId;
+            field_map[field_id] = i;
+        }
+
+        return field_map;
+    }
+};
+
+fn hasBitFlags(data: Buffer, enum_ref: reflection.EnumRef) bool {
     const attributes = reflection.Enum.attributes(data, enum_ref) orelse return false;
     const bit_flags = findAttribute(data, attributes, "bit_flags");
     return bit_flags != null;
 }
 
-fn findAttribute(data: []const u8, attributes: Vector(reflection.KeyValueRef), key: [:0]const u8) ?reflection.KeyValueRef {
+fn findAttribute(data: Buffer, attributes: Vector(reflection.KeyValueRef), key: [:0]const u8) ?reflection.KeyValueRef {
     for (0..attributes.len) |i| {
         const attribute = attributes.in(data, i);
         const attribute_key = reflection.KeyValue.key(data, attribute);
@@ -335,7 +458,7 @@ fn findAttribute(data: []const u8, attributes: Vector(reflection.KeyValueRef), k
     return null;
 }
 
-fn findEnumValue(data: []const u8, enum_ref: reflection.EnumRef, value: i64) !reflection.EnumValRef {
+fn findEnumValue(data: Buffer, enum_ref: reflection.EnumRef, value: i64) !reflection.EnumValRef {
     const enum_values = reflection.Enum.values(data, enum_ref);
     for (0..enum_values.len) |k| {
         const enum_value_ref = enum_values.in(data, k);
@@ -347,17 +470,25 @@ fn findEnumValue(data: []const u8, enum_ref: reflection.EnumRef, value: i64) !re
     return error.InvalidEnumValue;
 }
 
+fn getIntegerName(base_type: reflection.BaseType) ![]const u8 {
+    return switch (base_type) {
+        .UByte => "u8",
+        .Byte => "i8",
+        .UShort => "u16",
+        .Short => "i16",
+        .UInt => "u32",
+        .Int => "i32",
+        .ULong => "u64",
+        .Long => "i64",
+        else => return error.InvalidBaseType,
+    };
+}
+
 fn getScalarName(base_type: reflection.BaseType) ![]const u8 {
+    std.log.err("getScalarName({s})", .{@tagName(base_type)});
     return switch (base_type) {
         .Bool => "bool",
-        .Byte => "i8",
-        .UByte => "u8",
-        .Short => "i16",
-        .UShort => "u16",
-        .Int => "i32",
-        .UInt => "u32",
-        .Long => "i64",
-        .ULong => "u64",
+        .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => getIntegerName(base_type),
         .Float => "f32",
         .Double => "f64",
         else => return error.InvalidScalarType,
@@ -391,8 +522,8 @@ pub fn main() !void {
     const output = std.fs.File.stdout();
     var output_writer = output.writer(&buffer);
 
-    try createDecoder(data, &output_writer.interface);
-    try output_writer.interface.flush();
+    var generator = try Generator.init(@alignCast(data));
+    try generator.generate(&output_writer.interface);
 }
 
 test "simple decoder" {
@@ -402,8 +533,8 @@ test "simple decoder" {
     const log = std.fs.File.stdout();
     var writer = log.writer(&buffer);
 
-    try createDecoder(data, &writer.interface);
-    try writer.interface.flush();
+    var generator = try Generator.init(@alignCast(data));
+    try generator.generate(&writer.interface);
 }
 
 // test "simple.bfbs" {
