@@ -38,7 +38,9 @@ pub fn Vector(comptime T: type) type {
             return switch (@typeInfo(T)) {
                 .@"enum" => decodeEnum(T, data, item_offset),
                 .@"struct" => |info| switch (info.layout) {
-                    .auto => {},
+                    .auto => {
+                        //
+                    },
                     .@"packed" => switch (@field(T, "kind")) {
                         Kind.Table => decodeTable(T, data, item_offset),
                         Kind.Vector => @compileError("cannot nest vectors"),
@@ -105,81 +107,128 @@ pub fn getStructSize(comptime T: type) u32 {
     }
 }
 
-pub fn decodeStructField(
-    comptime field_index: u16,
-    comptime T: type,
-    data: Buffer,
-    table_offset: u32,
-    comptime default: T,
-) T {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
-        return default;
-    return decodeEnum(T, data, field_offset);
-}
-
-pub inline fn decodeEnumField(
-    comptime field_index: u16,
-    comptime T: type,
-    data: Buffer,
-    table_offset: u32,
-    comptime default: T,
-) T {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
-        return default;
-    return decodeEnum(T, data, field_offset);
-}
-
 pub inline fn decodeScalarField(
-    comptime field_index: u16,
     comptime T: type,
+    comptime field_id: u16,
     data: Buffer,
     table_offset: u32,
     comptime default: T,
 ) T {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
         return default;
     return decodeScalar(T, data, field_offset);
 }
 
-pub inline fn decodeBitFlagsField(
-    comptime field_index: u16,
+pub inline fn decodeEnumField(
     comptime T: type,
+    comptime field_id: u16,
     data: Buffer,
     table_offset: u32,
     comptime default: T,
 ) T {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
+        return default;
+    return decodeEnum(T, data, field_offset);
+}
+
+pub inline fn decodeBitFlagsField(
+    comptime T: type,
+    comptime field_id: u16,
+    data: Buffer,
+    table_offset: u32,
+    comptime default: T,
+) T {
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
         return default;
     return decodeBitFlags(T, data, field_offset);
 }
 
-pub inline fn decodeTableField(comptime field_index: u16, comptime T: type, data: Buffer, table_offset: u32) ?T {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
+pub fn decodeStructField(
+    comptime T: type,
+    comptime field_id: u16,
+    data: Buffer,
+    table_offset: u32,
+    comptime default: T,
+) T {
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
+        return default;
+    return decodeEnum(T, data, field_offset);
+}
+
+pub inline fn decodeTableField(
+    comptime T: type,
+    comptime field_id: u16,
+    data: Buffer,
+    table_offset: u32,
+) ?T {
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
         return null;
     return decodeTable(T, data, field_offset);
 }
 
-pub inline fn decodeStringField(
-    comptime field_index: u16,
+pub inline fn decodeUnionField(
+    comptime T: type,
+    comptime tag_field_id: u16,
+    comptime ref_field_id: u16,
     data: Buffer,
     table_offset: u32,
-) ?String {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
-        return null;
+) T {
+    const tag_type: type = switch (@typeInfo(T)) {
+        .@"union" => |info| info.tag_type orelse
+            @compileError("expected tagged union type"),
+        else => @compileError("expected tagged union type"),
+    };
 
-    return decodeString(data, field_offset);
+    const tag_fields = switch (@typeInfo(tag_type)) {
+        .@"enum" => |info| info.fields,
+        else => @compileError("expected enum tag type"),
+    };
+
+    const tag_field_offset = getFieldOffset(data, table_offset, tag_field_id) orelse
+        return @unionInit(T, "NONE", {});
+
+    const tag_value = std.mem.readInt(
+        tag_type,
+        data[tag_field_offset..][0..@sizeOf(tag_type)],
+        .little,
+    );
+
+    if (tag_value == 0)
+        return @unionInit(T, "NONE", {});
+
+    const ref_field_offset = getFieldOffset(data, table_offset, ref_field_id) orelse
+        return @unionInit(T, "NONE", {});
+
+    const ref_offset = ref_field_offset + decodeScalar(u32, data, ref_field_offset);
+
+    inline for (tag_fields) |tag_field| {
+        if (tag_field.value == tag_value) {
+            return @unionInit(T, tag_field.name, .{ .offset = ref_offset });
+        }
+    }
 }
 
 pub inline fn decodeVectorField(
-    comptime field_index: u16,
     comptime T: type,
+    comptime field_id: u16,
     data: Buffer,
     table_offset: u32,
 ) ?Vector(T) {
-    const field_offset = getFieldOffset(data, table_offset, field_index) orelse
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
         return null;
 
     return decodeVector(T, data, field_offset);
+}
+
+pub inline fn decodeStringField(
+    comptime field_id: u16,
+    data: Buffer,
+    table_offset: u32,
+) ?String {
+    const field_offset = getFieldOffset(data, table_offset, field_id) orelse
+        return null;
+
+    return decodeString(data, field_offset);
 }
 
 inline fn decodeEnum(comptime T: type, data: Buffer, offset: u32) T {
@@ -244,6 +293,10 @@ inline fn decodeBitFlags(comptime T: type, data: Buffer, offset: u32) T {
     return result;
 }
 
+// fn decodeStruct(comptime T: type, data: Buffer, offset: u32) T {
+//     //
+// }
+
 fn decodeVector(comptime T: type, data: Buffer, offset: u32) Vector(T) {
     const vec_start_offset = decodeScalar(u32, data, offset);
     const vec_offset = offset + vec_start_offset;
@@ -268,11 +321,11 @@ inline fn getVTableOffset(data: Buffer, table_offset: u32) u32 {
     return @intCast(vtable_uoffset);
 }
 
-fn getFieldOffset(data: Buffer, table_offset: u32, comptime field_index: u16) ?u32 {
+fn getFieldOffset(data: Buffer, table_offset: u32, comptime field_id: u16) ?u32 {
     const vtable_offset = getVTableOffset(data, table_offset);
     const vtable_size = decodeScalar(u16, data, vtable_offset);
 
-    const vtable_entry_offset_bytes = (2 + field_index) * @sizeOf(u16);
+    const vtable_entry_offset_bytes = (2 + field_id) * @sizeOf(u16);
     if (vtable_entry_offset_bytes + @sizeOf(u16) <= vtable_size) {
         const vtable_entry = decodeScalar(u16, data, vtable_offset + vtable_entry_offset_bytes);
         if (vtable_entry > 0) {

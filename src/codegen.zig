@@ -5,32 +5,39 @@ const String = flatbuffers.String;
 const Vector = flatbuffers.Vector;
 const Buffer = flatbuffers.Buffer;
 
-const reflection = @import("reflection2.zig");
+const reflection = @import("reflection.zig").reflection;
+const decodeRoot = @import("reflection.zig").decodeRoot;
 
 const Generator = struct {
+    allocator: std.mem.Allocator,
     data: Buffer,
 
     root: reflection.SchemaRef,
     enums: Vector(reflection.EnumRef),
     objects: Vector(reflection.ObjectRef),
 
-    field_id_buffer: [1024]usize = undefined,
+    field_id_buffer: std.ArrayList(usize),
+    namespace_prefix_map: std.StringArrayHashMapUnmanaged(usize),
 
-    pub fn init(data: Buffer) !Generator {
-        const schema = reflection.decodeRoot(data);
+    pub fn init(allocator: std.mem.Allocator, data: Buffer) !Generator {
+        const schema = decodeRoot(data);
         const enums = reflection.Schema.enums(data, schema);
         const objects = reflection.Schema.objects(data, schema);
 
         return Generator{
+            .allocator = allocator,
             .data = data,
             .root = schema,
             .enums = enums,
             .objects = objects,
+            .field_id_buffer = std.ArrayList(usize).empty,
+            .namespace_prefix_map = std.StringArrayHashMapUnmanaged(usize).empty,
         };
     }
 
     pub inline fn deinit(self: *Generator) void {
-        _ = self;
+        self.field_id_buffer.deinit(self.allocator);
+        self.namespace_prefix_map.deinit(self.allocator);
     }
 
     pub fn generate(self: *Generator, writer: *std.io.Writer) !void {
@@ -38,9 +45,6 @@ const Generator = struct {
             \\const std = @import("std");
             \\
             \\const flatbuffers = @import("flatbuffers.zig");
-            \\const String = flatbuffers.String;
-            \\const Vector = flatbuffers.Vector;
-            \\const Buffer = flatbuffers.Buffer;
             \\
             \\
         );
@@ -53,31 +57,97 @@ const Generator = struct {
 
         try writer.writeByte('\n');
 
-        for (0..self.enums.len) |i|
-            try self.writeEnumDeclaration(writer, self.enums.in(self.data, i));
+        // here we build a list of all partial namespace prefixes, e.g.
+        // 0: "org"
+        // 1: "org.apache"
+        // 2: "org.apache.arrow"
+        // 3: "org.apache.arrow.flatbuf"
+        // ... which will get sorted and each written as a nested namespace struct.
+
+        for (0..self.enums.len) |i| {
+            const enum_ref = self.enums.in(self.data, i);
+            const enum_name = reflection.Enum.name(self.data, enum_ref);
+            try self.addNamespacePrefix(enum_name);
+        }
 
         for (0..self.objects.len) |i| {
             const object_ref = self.objects.in(self.data, i);
-            if (reflection.Object.is_struct(self.data, object_ref)) {
-                try self.writeStructDeclaration(writer, object_ref);
-            } else {
-                try self.writeTableDeclaration(writer, object_ref);
-            }
+            const object_name = reflection.Object.name(self.data, object_ref);
+            try self.addNamespacePrefix(object_name);
         }
 
-        if (reflection.Schema.root_table(self.data, self.root)) |root_table| {
-            const root_table_name = reflection.Object.name(self.data, root_table);
-            try writer.print("pub fn decodeRoot(data: Buffer) {s}Ref ", .{root_table_name});
-            try writer.writeAll(
-                \\{
-                \\    const offset = std.mem.readInt(u32, data[0..4], .little);
-                \\    return .{ .offset = offset };
-                \\}
-                \\
-            );
+        // sort
+        const keys = self.namespace_prefix_map.keys();
+        const values = self.namespace_prefix_map.values();
+        self.namespace_prefix_map.sort(struct {
+            keys: [][]const u8,
+
+            pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+                return std.mem.lessThan(u8, ctx.keys[a_index], ctx.keys[b_index]);
+            }
+        }{ .keys = keys });
+
+        const count = self.namespace_prefix_map.count();
+
+        // now we have a list of all partial prefixes.
+        for (keys, values, 0..) |prefix, level, i| {
+            var name_start: usize = 0;
+            if (std.mem.lastIndexOfScalar(u8, prefix[0 .. prefix.len - 1], '.')) |last_index|
+                name_start = last_index + 1;
+            const name = prefix[name_start .. prefix.len - 1];
+            try writer.print("pub const {s} = struct ", .{name});
+            try writer.writeAll("{\n");
+
+            for (0..self.enums.len) |j| {
+                const enum_ref = self.enums.in(self.data, j);
+                const enum_name = reflection.Enum.name(self.data, enum_ref);
+                const prefix_end = std.mem.lastIndexOfScalar(u8, enum_name, '.') orelse continue;
+                if (std.mem.eql(u8, prefix, enum_name[0 .. prefix_end + 1])) {
+                    try self.writeEnumDeclaration(writer, enum_ref, enum_name[prefix.len..]);
+                }
+            }
+
+            for (0..self.objects.len) |j| {
+                const object_ref = self.objects.in(self.data, j);
+                const object_name = reflection.Object.name(self.data, object_ref);
+                const prefix_end = std.mem.lastIndexOfScalar(u8, object_name, '.') orelse continue;
+                if (std.mem.eql(u8, prefix, object_name[0 .. prefix_end + 1])) {
+                    if (reflection.Object.is_struct(self.data, object_ref)) {
+                        try self.writeStructDeclaration(writer, object_ref, object_name[prefix.len..]);
+                    } else {
+                        try self.writeTableDeclaration(writer, object_ref, object_name[prefix.len..]);
+                    }
+                }
+            }
+
+            var closing_count = level;
+            if (i + 1 < count)
+                closing_count -= @min(level, values[i + 1]);
+
+            for (0..closing_count) |_|
+                try writer.writeAll("};\n");
         }
+
+        if (reflection.Schema.root_table(self.data, self.root)) |root_table|
+            try writer.print(
+                \\
+                \\pub fn decodeRoot(data: flatbuffers.Buffer) {s}Ref {{
+                \\    const offset = std.mem.readInt(u32, data[0..4], .little);
+                \\    return .{{ .offset = offset }};
+                \\}}
+                \\
+            , .{reflection.Object.name(self.data, root_table)});
 
         try writer.flush();
+    }
+
+    fn addNamespacePrefix(self: *Generator, name: []const u8) !void {
+        var start: usize = 0;
+        while (std.mem.indexOfScalarPos(u8, name, start, '.')) |i| : (start = i + 1) {
+            const prefix = name[0 .. i + 1];
+            const level = std.mem.count(u8, prefix, ".");
+            try self.namespace_prefix_map.put(self.allocator, prefix, level);
+        }
     }
 
     inline fn getEnum(self: *Generator, enum_index: i32) !reflection.EnumRef {
@@ -94,22 +164,70 @@ const Generator = struct {
         return self.objects.in(self.data, @intCast(object_index));
     }
 
-    fn writeEnumDeclaration(self: *Generator, writer: *std.io.Writer, enum_item: reflection.EnumRef) !void {
-        const enum_name = reflection.Enum.name(self.data, enum_item);
+    const FOO = union(enum) {
+        Foo: void,
+        Bar: u8,
+    };
 
+    fn writeEnumDeclaration(
+        self: *Generator,
+        writer: *std.io.Writer,
+        enum_ref: reflection.EnumRef,
+        enum_name: []const u8,
+    ) !void {
         const base_type = reflection.Type.base_type(
             self.data,
-            reflection.Enum.underlying_type(self.data, enum_item),
+            reflection.Enum.underlying_type(self.data, enum_ref),
         );
 
-        const enum_type = try getIntegerName(switch (base_type) {
-            .UType => reflection.BaseType.UByte,
-            else => base_type,
-        });
+        // write declaration for Unions. The name of the EnumVals are the names of the tables.
+        switch (base_type) {
+            .UType => {
+                const enum_values = reflection.Enum.values(self.data, enum_ref);
 
-        const is_bit_flag = hasBitFlags(self.data, enum_item);
+                // try writer.print("pub const {s}Tag = enum(u8)", .{enum_name});
+                // try writer.writeAll(" {\n");
+                // for (0..enum_values.len) |j| {
+                //     const enum_val_ref = enum_values.in(self.data, j);
+                //     const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
+
+                //     if (j == 0 and !std.mem.eql(u8, enum_val_name, "NONE"))
+                //         return error.InvalidUnionValue;
+
+                //     try writer.print("    {s} = {d},\n", .{ enum_val_name, enum_val_value });
+                // }
+
+                // try writer.writeAll("};\n\n");
+
+                try writer.print("pub const {s} = union(enum(u8))", .{enum_name});
+                try writer.writeAll(" {\n");
+                for (0..enum_values.len) |j| {
+                    const enum_val_ref = enum_values.in(self.data, j);
+                    const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
+                    const enum_val_value = reflection.EnumVal.value(self.data, enum_val_ref);
+
+                    if (reflection.EnumVal.documentation(self.data, enum_val_ref)) |documentation|
+                        for (0..documentation.len) |k|
+                            try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
+
+                    if (enum_val_value == 0) {
+                        try writer.print("    {s}: void = {d},\n", .{ enum_val_name, enum_val_value });
+                    } else {
+                        try writer.print("    {s}: {s}Ref = {d},\n", .{ enum_val_name, enum_val_name, enum_val_value });
+                    }
+                }
+
+                try writer.writeAll("};\n\n");
+                return;
+            },
+            else => {},
+        }
+
+        const enum_type = try getIntegerName(base_type);
+
+        const is_bit_flag = hasBitFlags(self.data, enum_ref);
         if (is_bit_flag) {
-            const enum_values = reflection.Enum.values(self.data, enum_item);
+            const enum_values = reflection.Enum.values(self.data, enum_ref);
 
             var flags_buffer: [256]u8 = undefined;
             var flags_writer = std.io.Writer.fixed(&flags_buffer);
@@ -146,7 +264,7 @@ const Generator = struct {
         } else {
             try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
             try writer.writeAll(" {\n");
-            const enum_values = reflection.Enum.values(self.data, enum_item);
+            const enum_values = reflection.Enum.values(self.data, enum_ref);
             for (0..enum_values.len) |j| {
                 const enum_value = enum_values.in(self.data, j);
 
@@ -164,9 +282,8 @@ const Generator = struct {
         }
     }
 
-    fn writeTableDeclaration(self: *Generator, writer: *std.io.Writer, object: reflection.ObjectRef) !void {
-        const object_name = reflection.Object.name(self.data, object);
-        const object_fields = reflection.Object.fields(self.data, object);
+    fn writeTableDeclaration(self: *Generator, writer: *std.io.Writer, object_ref: reflection.ObjectRef, object_name: []const u8) !void {
+        const object_fields = reflection.Object.fields(self.data, object_ref);
         const object_field_map = try self.getFieldMap(object_fields);
 
         try writer.print(
@@ -191,30 +308,42 @@ const Generator = struct {
             const field_offset = reflection.Field.offset(self.data, field);
             const deprecated = reflection.Field.deprecated(self.data, field);
             const required = reflection.Field.required(self.data, field);
-            // const optional = reflection.Field.optional(self.data, field);
+            const optional = reflection.Field.optional(self.data, field);
 
             if (field_offset != @sizeOf(u32) + @sizeOf(u16) * field_id)
                 return error.InvalidFieldOffset;
 
             if (deprecated) continue;
 
+            const field_base_type = reflection.Type.base_type(self.data, field_type);
+            const field_base_size = reflection.Type.base_size(self.data, field_type);
+            _ = field_base_size;
+            _ = optional;
+
+            if (field_base_type == .UType) {
+                const next_field_id = field_id + 1;
+                if (next_field_id >= object_fields.len)
+                    return error.InvalidFieldType;
+                const next_field_ref = object_fields.in(self.data, object_field_map[next_field_id]);
+                const next_field_type = reflection.Field.type(self.data, next_field_ref);
+                const next_field_base_type = reflection.Type.base_type(self.data, next_field_type);
+                if (next_field_base_type != .Union)
+                    return error.InvalidFieldType;
+                continue;
+            }
+
             if (reflection.Field.documentation(self.data, field)) |documentation|
                 for (0..documentation.len) |k|
                     try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
 
-            try writer.print("    pub fn @\"{s}\"(data: Buffer, ref: {s}Ref)", .{ field_name, object_name });
-
-            const field_base_type = reflection.Type.base_type(self.data, field_type);
-            const field_base_size = reflection.Type.base_size(self.data, field_type);
-            _ = field_base_size;
+            try writer.print("    pub fn @\"{s}\"(data: flatbuffers.Buffer, ref: {s}Ref)", .{ field_name, object_name });
 
             switch (field_base_type) {
                 .Bool => {
                     const default_integer = reflection.Field.default_integer(self.data, field);
                     try writer.print(
                         \\ bool {{
-                        \\        const field_id = {d};
-                        \\        return flatbuffers.decodeScalarField(field_id, bool, data, ref.offset, {});
+                        \\        return flatbuffers.decodeScalarField(bool, {d}, data, ref.offset, {});
                         \\    }}
                     , .{ field_id, default_integer != 0 });
                 },
@@ -225,33 +354,34 @@ const Generator = struct {
                         const type_name = try getScalarName(field_base_type);
                         try writer.print(
                             \\ {s} {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeScalarField(field_id, {s}, data, ref.offset, {d});
+                            \\        return flatbuffers.decodeScalarField({s}, {d}, data, ref.offset, {d});
                             \\    }}
-                        , .{ type_name, field_id, type_name, default_integer });
+                        , .{ type_name, type_name, field_id, default_integer });
                     } else {
-                        const field_enum = try self.getEnum(field_enum_index);
-                        const field_enum_name = reflection.Enum.name(self.data, field_enum);
-
-                        const is_bit_flag = hasBitFlags(self.data, field_enum);
-                        if (is_bit_flag) {
+                        const field_enum_ref = try self.getEnum(field_enum_index);
+                        const field_enum_name = reflection.Enum.name(self.data, field_enum_ref);
+                        const field_enum_type = reflection.Enum.underlying_type(self.data, field_enum_ref);
+                        const field_enum_base_type = reflection.Type.base_type(self.data, field_enum_type);
+                        const is_union = field_enum_base_type == .UType;
+                        const is_bit_flag = hasBitFlags(self.data, field_enum_ref);
+                        if (is_union) {
+                            //
+                        } else if (is_bit_flag) {
                             // TODO: default bit flag values
                             try writer.print(
                                 \\ {s} {{
-                                \\        const field_id = {d};
-                                \\        return flatbuffers.decodeBitFlagsField(field_id, {s}, data, ref.offset, {s}{{}});
+                                \\        return flatbuffers.decodeBitFlagsField({s}, {d}, data, ref.offset, {s}{{}});
                                 \\    }}
-                            , .{ field_enum_name, field_id, field_enum_name, field_enum_name });
+                            , .{ field_enum_name, field_enum_name, field_id, field_enum_name });
                         } else {
-                            const default_enum_value = try findEnumValue(self.data, field_enum, default_integer);
+                            const default_enum_value = try findEnumValue(self.data, field_enum_ref, default_integer);
                             const default_enum_name = reflection.EnumVal.name(self.data, default_enum_value);
 
                             try writer.print(
                                 \\ {s} {{
-                                \\        const field_id = {d};
-                                \\        return flatbuffers.decodeEnumField(field_id, {s}, data, ref.offset, {s}.{s});
+                                \\        return flatbuffers.decodeEnumField({s}, {d}, data, ref.offset, {s}.{s});
                                 \\    }}
-                            , .{ field_enum_name, field_id, field_enum_name, field_enum_name, default_enum_name });
+                            , .{ field_enum_name, field_enum_name, field_id, field_enum_name, default_enum_name });
                         }
                     }
                 },
@@ -260,25 +390,22 @@ const Generator = struct {
                     const default_real = reflection.Field.default_real(self.data, field);
                     try writer.print(
                         \\ {s} {{
-                        \\        const field_id = {d};
-                        \\        return flatbuffers.decodeScalarField(field_id, {s}, data, ref.offset, {d});
+                        \\        return flatbuffers.decodeScalarField({s}, {d}, data, ref.offset, {d});
                         \\    }}
-                    , .{ type_name, field_id, type_name, default_real });
+                    , .{ type_name, type_name, field_id, default_real });
                 },
                 .String => {
                     if (required) {
                         try writer.print(
                             \\ flatbuffers.String {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeStringField(field_id, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeStringField({d}, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
                         , .{ field_id, object_name, field_name });
                     } else {
                         try writer.print(
                             \\ ?flatbuffers.String {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeStringField(field_id, data, ref.offset);
+                            \\        return flatbuffers.decodeStringField({d}, data, ref.offset);
                             \\    }}
                         , .{field_id});
                     }
@@ -312,18 +439,16 @@ const Generator = struct {
                     if (required) {
                         try writer.print(
                             \\ flatbuffers.Vector({s}) {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeVectorField(field_id, {s}, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeVectorField({s}, {d}, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
-                        , .{ element_name, field_id, element_name, object_name, field_name });
+                        , .{ element_name, element_name, field_id, object_name, field_name });
                     } else {
                         try writer.print(
                             \\ ?flatbuffers.Vector({s}) {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeVectorField(field_id, {s}, data, ref.offset);
+                            \\        return flatbuffers.decodeVectorField({s}, {d}, data, ref.offset);
                             \\    }}
-                        , .{ element_name, field_id, element_name });
+                        , .{ element_name, element_name, field_id });
                     }
                 },
                 .Obj => {
@@ -334,33 +459,44 @@ const Generator = struct {
                     if (required) {
                         try writer.print(
                             \\ {s}Ref {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeTableField(field_id, {s}Ref, data, ref.offset) orelse
+                            \\        return flatbuffers.decodeTableField({s}Ref, {d}, data, ref.offset) orelse
                             \\            @panic("missing {s}.{s} field");
                             \\    }}
-                        , .{ field_object_name, field_id, field_object_name, object_name, field_name });
+                        , .{ field_object_name, field_object_name, field_id, object_name, field_name });
                     } else {
                         try writer.print(
                             \\ ?{s}Ref {{
-                            \\        const field_id = {d};
-                            \\        return flatbuffers.decodeTableField(field_id, {s}Ref, data, ref.offset);
+                            \\        return flatbuffers.decodeTableField({s}Ref, {d}, data, ref.offset);
                             \\    }}
-                        , .{ field_object_name, field_id, field_object_name });
+                        , .{ field_object_name, field_object_name, field_id });
                     }
                 },
-                .UType => {
-                    std.log.err("encountered UType", .{});
-                },
+                .UType => unreachable,
                 .Union => {
-                    std.log.err("encountered Union", .{});
-                },
-                .Array => {
-                    std.log.err("encountered Array", .{});
+                    if (field_id == 0)
+                        return error.InvalidFieldType;
+                    const prev_field_id = field_id - 1;
+                    const prev_field_ref = object_fields.in(self.data, object_field_map[prev_field_id]);
+                    const prev_field_type = reflection.Field.type(self.data, prev_field_ref);
+                    const prev_field_base_type = reflection.Type.base_type(self.data, prev_field_type);
+                    if (prev_field_base_type != .UType)
+                        return error.InvalidFieldType;
+
+                    const utype_index = reflection.Type.index(self.data, field_type);
+                    if (utype_index != reflection.Type.index(self.data, prev_field_type))
+                        return error.InvalidFieldType;
+                    const utype_enum_ref = try self.getEnum(utype_index);
+                    const utype_enum_name = reflection.Enum.name(self.data, utype_enum_ref);
+                    try writer.print(
+                        \\ {s} {{
+                        \\        return flatbuffers.decodeUnionField({s}, {d}, {d}, data, ref.offset);
+                        \\    }}
+                    , .{ utype_enum_name, utype_enum_name, prev_field_id, field_id });
                 },
                 .Vector64 => {
                     std.log.err("encountered Vector64", .{});
                 },
-                .None, .MaxBaseType => return error.InvalidFieldType,
+                .Array, .None, .MaxBaseType => return error.InvalidFieldType,
             }
 
             _ = try writer.splatByte('\n', 2);
@@ -369,9 +505,13 @@ const Generator = struct {
         try writer.writeAll("};\n\n");
     }
 
-    fn writeStructDeclaration(self: *Generator, writer: *std.io.Writer, object: reflection.ObjectRef) !void {
-        const object_name = reflection.Object.name(self.data, object);
-        const object_fields = reflection.Object.fields(self.data, object);
+    fn writeStructDeclaration(
+        self: *Generator,
+        writer: *std.io.Writer,
+        object_ref: reflection.ObjectRef,
+        object_name: []const u8,
+    ) !void {
+        const object_fields = reflection.Object.fields(self.data, object_ref);
         const object_field_map = try self.getFieldMap(object_fields);
 
         // const object_bytesize = reflection.Object.bytesize(data, object);
@@ -406,7 +546,7 @@ const Generator = struct {
             switch (field_base_type) {
                 .Bool, .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong, .Float, .Double => {
                     const scalar_name = try getScalarName(field_base_type);
-                    try writer.print("    @\"{s}\": {s}\n", .{ field_name, scalar_name });
+                    try writer.print("    @\"{s}\": {s},\n", .{ field_name, scalar_name });
                 },
                 .Array => {
                     @panic("not implemented");
@@ -423,7 +563,10 @@ const Generator = struct {
 
     fn getFieldMap(self: *Generator, fields: Vector(reflection.FieldRef)) ![]const usize {
         const empty = std.math.maxInt(usize);
-        const field_map = self.field_id_buffer[0..fields.len];
+
+        try self.field_id_buffer.resize(self.allocator, fields.len);
+        const field_map = self.field_id_buffer.items;
+
         @memset(field_map, empty);
         for (0..fields.len) |i| {
             const field = fields.in(self.data, i);
@@ -520,7 +663,9 @@ pub fn main() !void {
     const output = std.fs.File.stdout();
     var output_writer = output.writer(&buffer);
 
-    var generator = try Generator.init(@alignCast(data));
+    var generator = try Generator.init(std.heap.c_allocator, @alignCast(data));
+    defer generator.deinit();
+
     try generator.generate(&output_writer.interface);
 }
 
