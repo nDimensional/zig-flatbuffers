@@ -128,7 +128,7 @@ const Generator = struct {
                 try writer.writeAll("};\n");
         }
 
-        if (reflection.Schema.root_table(self.data, self.root)) |root_table|
+        if (reflection.Schema.root_table(self.data, self.root)) |root_table| {
             try writer.print(
                 \\
                 \\pub fn decodeRoot(data: flatbuffers.Buffer) {s}Ref {{
@@ -137,6 +137,20 @@ const Generator = struct {
                 \\}}
                 \\
             , .{reflection.Object.name(self.data, root_table)});
+
+            try writer.writeAll(
+                \\
+                \\pub fn validateRoot(data: flatbuffers.Buffer) !void {
+                \\    if (data.len < 8)
+                \\        return error.Invalid;
+                \\
+                \\    const root = decodeRoot(data);
+                \\    if (root.offset >= data.len)
+                \\        return error.Invalid;
+                \\}
+                \\
+            );
+        }
 
         try writer.flush();
     }
@@ -164,11 +178,6 @@ const Generator = struct {
         return self.objects.in(self.data, @intCast(object_index));
     }
 
-    const FOO = union(enum) {
-        Foo: void,
-        Bar: u8,
-    };
-
     fn writeEnumDeclaration(
         self: *Generator,
         writer: *std.io.Writer,
@@ -180,40 +189,51 @@ const Generator = struct {
             reflection.Enum.underlying_type(self.data, enum_ref),
         );
 
-        // write declaration for Unions. The name of the EnumVals are the names of the tables.
-        switch (base_type) {
-            .UType => {
-                try writer.print("pub const {s} = union(enum(u8))", .{enum_name});
-                try writer.writeAll(" {\n");
-
-                const enum_values = reflection.Enum.values(self.data, enum_ref);
-                for (0..enum_values.len) |j| {
-                    const enum_val_ref = enum_values.in(self.data, j);
-                    const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
-                    const enum_val_value = reflection.EnumVal.value(self.data, enum_val_ref);
-
-                    if (reflection.EnumVal.documentation(self.data, enum_val_ref)) |documentation|
-                        for (0..documentation.len) |k|
-                            try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
-
-                    if (enum_val_value == 0) {
-                        try writer.print("    {s}: void = {d},\n", .{ enum_val_name, enum_val_value });
-                    } else {
-                        try writer.print("    {s}: {s}Ref = {d},\n", .{ enum_val_name, enum_val_name, enum_val_value });
-                    }
-                }
-
-                try writer.writeAll("};\n\n");
-                return;
-            },
-            else => {},
-        }
-
-        const enum_type = try getIntegerName(base_type);
-
+        const is_union = reflection.Enum.is_union(self.data, enum_ref);
         const is_bit_flag = hasBitFlags(self.data, enum_ref);
-        if (is_bit_flag) {
-            const enum_values = reflection.Enum.values(self.data, enum_ref);
+
+        const enum_values = reflection.Enum.values(self.data, enum_ref);
+
+        if (is_union) {
+            if (base_type != .UType)
+                return error.InvalidEnum;
+
+            try writer.print("pub const {s} = union(enum(u8))", .{enum_name});
+            try writer.writeAll(" {\n");
+
+            for (0..enum_values.len) |j| {
+                const enum_val_ref = enum_values.in(self.data, j);
+                const enum_val_name = reflection.EnumVal.name(self.data, enum_val_ref);
+                const enum_val_value = reflection.EnumVal.value(self.data, enum_val_ref);
+
+                // const union_type = reflection.EnumVal.union_type(self.data, enum_val_ref) orelse
+                //     return error.InvalidEnum;
+
+                // if (reflection.Type.base_type(self.data, union_type) != .Obj)
+                //     return error.InvalidEnum;
+
+                // const union_type_index = reflection.Type.index(self.data, union_type);
+                // const union_type_object = try self.getObject(union_type_index);
+                // if (reflection.Object.is_struct(self.data, union_type_object))
+                //     return error.InvalidEnum;
+                // const union_type_name = reflection.Object.name(self.data, union_type_object);
+                // if (!std.mem.eql(u8, enum_val_name, union_type_name))
+                //     return error.InvalidEnum;
+
+                if (reflection.EnumVal.documentation(self.data, enum_val_ref)) |documentation|
+                    for (0..documentation.len) |k|
+                        try writer.print("    /// {s}\n", .{documentation.in(self.data, k)});
+
+                if (enum_val_value == 0) {
+                    try writer.print("    {s}: void = {d},\n", .{ enum_val_name, enum_val_value });
+                } else {
+                    try writer.print("    {s}: {s}Ref = {d},\n", .{ enum_val_name, enum_val_name, enum_val_value });
+                }
+            }
+
+            try writer.writeAll("};\n\n");
+        } else if (is_bit_flag) {
+            const enum_type = try getIntegerName(base_type);
 
             var flags_buffer: [256]u8 = undefined;
             var flags_writer = std.io.Writer.fixed(&flags_buffer);
@@ -248,9 +268,10 @@ const Generator = struct {
 
             try writer.writeAll("};\n\n");
         } else {
+            const enum_type = try getIntegerName(base_type);
+
             try writer.print("pub const {s} = enum({s})", .{ enum_name, enum_type });
             try writer.writeAll(" {\n");
-            const enum_values = reflection.Enum.values(self.data, enum_ref);
             for (0..enum_values.len) |j| {
                 const enum_val_ref = enum_values.in(self.data, j);
 

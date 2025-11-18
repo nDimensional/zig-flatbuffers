@@ -335,3 +335,8 @@ fn getFieldOffset(data: Buffer, table_offset: u32, comptime field_id: u16) ?u32 
 
     return null;
 }
+
+fn validateTable(data: Buffer, table_offset: u32) !void {
+    if (table_offset >= data.len)
+        return error.Invalid;
+}

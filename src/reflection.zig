@@ -397,3 +397,12 @@ pub fn decodeRoot(data: flatbuffers.Buffer) reflection.SchemaRef {
     const offset = std.mem.readInt(u32, data[0..4], .little);
     return .{ .offset = offset };
 }
+
+pub fn validateRoot(data: flatbuffers.Buffer) !void {
+    if (data.len < 8)
+        return error.Invalid;
+
+    const root = decodeRoot(data);
+    if (root.offset >= data.len)
+        return error.Invalid;
+}
