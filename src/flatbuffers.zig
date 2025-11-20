@@ -69,16 +69,12 @@ pub const Type = union(enum) {
     table: static.Table,
 };
 
-pub const Kind = union(enum) {
-    // pub const BitFlagsInfo = struct {
-    //     backing_integer: type,
-    //     flags: []const comptime_int,
-    // };
-
+/// Used to differentiate the kinds of struct declarations
+pub const Kind = enum {
     Table,
     Struct,
-    Vector,
     BitFlags,
+    Vector,
 };
 
 pub const String = [:0]const u8;
@@ -86,7 +82,6 @@ pub const String = [:0]const u8;
 pub fn Vector(comptime T: type) type {
     return struct {
         pub const @"#kind" = Kind.Vector;
-        // pub const @"#type" = static.Vector{.}
         const item_size = getVectorElementSize(T);
 
         const Self = @This();
@@ -101,16 +96,16 @@ pub fn Vector(comptime T: type) type {
             const i: u32 = @truncate(index);
             const item_ref = self.@"#ref".add(@sizeOf(u32) + item_size * i);
             return switch (@typeInfo(T)) {
+                .int, .float, .bool => item_ref.decodeScalar(T),
+                .pointer => decodeString(item_ref),
                 .@"enum" => item_ref.decodeEnum(T),
                 .@"struct" => switch (@field(T, "#kind")) {
                     Kind.Table => decodeTable(T, item_ref),
-                    Kind.Vector => @compileError("cannot nest vectors"),
                     Kind.Struct => @compileError("not implemented"),
                     Kind.BitFlags => decodeBitFlags(T, item_ref),
+                    Kind.Vector => @compileError("cannot nest vectors"),
                 },
-                .pointer => decodeString(item_ref),
-                .int, .float, .bool => item_ref.decodeScalar(T),
-                else => @compileError("not implemented"),
+                else => @compileError("invalid vector type"),
             };
         }
     };

@@ -358,6 +358,7 @@ pub const Struct = struct {
 
         try writer.print(
             \\pub const @"{s}" = struct {{
+            \\    pub const @"#kind" = flatbuffers.Kind.Struct;
             \\    pub const @"#type" = {f};
             \\
         , .{ pop(self.name), self });
@@ -406,12 +407,7 @@ pub const BitFlags = struct {
 
         try writer.print(
             \\pub const {s} = packed struct {{
-            \\    pub const @"#kind" = flatbuffers.Kind{{
-            \\        .BitFlags = .{{
-            \\            .backing_integer = {s},
-            \\            .flags = &.{{ {s} }},
-            \\        }},
-            \\    }};
+            \\    pub const @"#kind" = flatbuffers.Kind.BitFlags;
             \\
             \\
         , .{ pop(self.name), @tagName(self.backing_integer), flags });
