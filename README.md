@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project implements a code generator for efficient FlatBuffers decoders in Zig.
+This project implements a code generator for efficient FlatBuffers decoders in Zig, for Zig.
 
 First, a binary `.bfbs` schema file is decoded into an IR defined in `src/types.zig`. The code generator in `src/codegen.zig` then consumes this IR and emits Zig source code containing type definitions and field accessors specific to the given schema. The generated code uses generic functions from a runtime `flatbuffers` module to perform safe, typed, zero-copy access on serialized data.
 
