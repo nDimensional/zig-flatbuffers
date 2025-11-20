@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const static = @import("static.zig");
+const types = @import("types.zig");
 
 pub const Ref = struct {
     ptr: [*]align(8) const u8,
@@ -62,11 +62,11 @@ pub const Ref = struct {
 };
 
 pub const Type = union(enum) {
-    @"enum": static.Enum,
-    @"union": static.Union,
-    @"struct": static.Struct,
-    bit_flags: static.BitFlags,
-    table: static.Table,
+    @"enum": types.Enum,
+    @"union": types.Union,
+    @"struct": types.Struct,
+    bit_flags: types.BitFlags,
+    table: types.Table,
 };
 
 /// Used to differentiate the kinds of struct declarations
@@ -159,7 +159,7 @@ fn getVectorElementSize(comptime T: type) u32 {
             Kind.Vector => @compileError("cannot nest vectors"),
             Kind.Struct => getStructSize(T),
             Kind.BitFlags => {
-                const bit_flags: static.BitFlags = @field(T, "#type");
+                const bit_flags: types.BitFlags = @field(T, "#type");
                 return switch (bit_flags.backing_integer) {
                     .u8 => 1,
                     .u16 => 2,
@@ -290,7 +290,7 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
         else => @compileError("expected bit flags struct"),
     };
 
-    const bit_flags: static.BitFlags = comptime @field(T, "#type");
+    const bit_flags: types.BitFlags = comptime @field(T, "#type");
 
     if (bit_flags.fields.len != info.fields.len)
         @compileError("invalid bit flag fields");

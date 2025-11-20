@@ -1,5 +1,5 @@
 const std = @import("std");
-const static = @import("static.zig");
+const types = @import("types.zig");
 
 const flatbuffers = @import("flatbuffers.zig");
 const reflection = @import("reflection.zig").reflection;
@@ -14,11 +14,11 @@ pub const Parser = struct {
 
     field_id_map: std.ArrayList(usize) = std.ArrayList(usize).empty,
 
-    enum_list: std.ArrayList(static.Enum) = std.ArrayList(static.Enum).empty,
-    union_list: std.ArrayList(static.Union) = std.ArrayList(static.Union).empty,
-    table_list: std.ArrayList(static.Table) = std.ArrayList(static.Table).empty,
-    struct_list: std.ArrayList(static.Struct) = std.ArrayList(static.Struct).empty,
-    bit_flags_list: std.ArrayList(static.BitFlags) = std.ArrayList(static.BitFlags).empty,
+    enum_list: std.ArrayList(types.Enum) = std.ArrayList(types.Enum).empty,
+    union_list: std.ArrayList(types.Union) = std.ArrayList(types.Union).empty,
+    table_list: std.ArrayList(types.Table) = std.ArrayList(types.Table).empty,
+    struct_list: std.ArrayList(types.Struct) = std.ArrayList(types.Struct).empty,
+    bit_flags_list: std.ArrayList(types.BitFlags) = std.ArrayList(types.BitFlags).empty,
 
     pub fn init(allocator: std.mem.Allocator, data: []align(8) const u8) Parser {
         const root = try decodeRoot(reflection.Schema, data);
@@ -45,7 +45,7 @@ pub const Parser = struct {
 
     pub const ParseResult = struct {
         arena: std.heap.ArenaAllocator,
-        schema: static.Schema,
+        schema: types.Schema,
     };
 
     pub fn parse(self: *Parser) !ParseResult {
@@ -68,7 +68,7 @@ pub const Parser = struct {
                 if (base_type != .UType)
                     return error.InvalidUnion;
 
-                const options = try arena_allocator.alloc(static.Union.Option, enum_values_len - 1);
+                const options = try arena_allocator.alloc(types.Union.Option, enum_values_len - 1);
 
                 const none_val = enum_values.at(0);
                 if (none_val.value() != 0)
@@ -94,7 +94,7 @@ pub const Parser = struct {
                     const object = try self.getObject(t.index());
                     if (object.is_struct())
                         return error.InvalidUnion;
-                    if (!std.mem.eql(u8, enum_val_name, static.pop(object.name())))
+                    if (!std.mem.eql(u8, enum_val_name, types.pop(object.name())))
                         return error.InvalidUnion;
 
                     option.* = .{ .table = .{ .name = try copyName(arena_allocator, enum_val_name) } };
@@ -102,7 +102,7 @@ pub const Parser = struct {
                         option.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
-                var union_t = static.Union{
+                var union_t = types.Union{
                     .options = options,
                     .name = try copyName(arena_allocator, enum_name),
                 };
@@ -112,12 +112,12 @@ pub const Parser = struct {
 
                 try self.union_list.append(self.allocator, union_t);
             } else if (hasBitFlags(enum_ref)) {
-                const backing_integer: static.Integer = switch (base_type) {
+                const backing_integer: types.Integer = switch (base_type) {
                     .UByte, .UShort, .UInt, .ULong => try getInteger(base_type),
                     else => return error.InvalidBitFlags,
                 };
 
-                const fields = try arena_allocator.alloc(static.BitFlags.Field, enum_values_len);
+                const fields = try arena_allocator.alloc(types.BitFlags.Field, enum_values_len);
 
                 for (fields, 0..) |*field, j| {
                     const enum_val = enum_values.at(j);
@@ -126,7 +126,7 @@ pub const Parser = struct {
                     if (value < 1 or !std.math.isPowerOfTwo(value))
                         return error.InvalidBitFlags;
 
-                    field.* = static.BitFlags.Field{
+                    field.* = types.BitFlags.Field{
                         .name = try copyName(arena_allocator, enum_val_name),
                         .value = @intCast(value),
                     };
@@ -135,7 +135,7 @@ pub const Parser = struct {
                         field.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
-                var bit_flags = static.BitFlags{
+                var bit_flags = types.BitFlags{
                     .name = try copyName(arena_allocator, enum_name),
                     .backing_integer = backing_integer,
                     .fields = fields,
@@ -148,13 +148,13 @@ pub const Parser = struct {
             } else {
                 const backing_integer = try getInteger(base_type);
 
-                const values = try arena_allocator.alloc(static.Enum.Value, enum_values_len);
+                const values = try arena_allocator.alloc(types.Enum.Value, enum_values_len);
                 for (values, 0..) |*value, j| {
                     const enum_val = enum_values.at(j);
                     const enum_val_name = enum_val.name();
                     const enum_val_value = enum_val.value();
                     // TODO: check bounds on enum_val_value
-                    value.* = static.Enum.Value{
+                    value.* = types.Enum.Value{
                         .name = try copyName(arena_allocator, enum_val_name),
                         .value = @intCast(enum_val_value),
                     };
@@ -163,7 +163,7 @@ pub const Parser = struct {
                         value.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
-                var enum_t = static.Enum{
+                var enum_t = types.Enum{
                     .name = try copyName(arena_allocator, enum_name),
                     .backing_integer = backing_integer,
                     .values = values,
@@ -186,14 +186,14 @@ pub const Parser = struct {
             const field_map = try self.getFieldMap(object_fields);
 
             if (object_ref.is_struct()) {
-                const fields = try arena_allocator.alloc(static.Struct.Field, object_fields_len);
+                const fields = try arena_allocator.alloc(types.Struct.Field, object_fields_len);
 
                 for (fields, 0..) |*field, j| {
                     const field_ref = object_fields.at(j);
                     const field_name = field_ref.name();
                     const field_type = field_ref.type();
 
-                    field.* = static.Struct.Field{
+                    field.* = types.Struct.Field{
                         .name = try copyName(arena_allocator, field_name),
                         .type = .bool,
                     };
@@ -226,7 +226,7 @@ pub const Parser = struct {
                         field.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
-                var struct_t = static.Struct{
+                var struct_t = types.Struct{
                     .name = try copyName(arena_allocator, object_name),
                     .fields = fields,
                 };
@@ -269,7 +269,7 @@ pub const Parser = struct {
                 }
 
                 const field_count = object_fields_len - union_field_count;
-                const fields = try arena_allocator.alloc(static.Table.Field, field_count);
+                const fields = try arena_allocator.alloc(types.Table.Field, field_count);
 
                 var field_index: usize = 0;
                 for (field_map, 0..) |j, field_id| {
@@ -282,14 +282,14 @@ pub const Parser = struct {
                         .UType => {
                             const enum_ref = try self.getEnum(field_type.index());
                             const union_ref_name = try copyName(arena_allocator, enum_ref.name());
-                            fields[field_index] = static.Table.Field{
+                            fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
                                 .type = .{ .@"union" = .{ .name = union_ref_name } },
                                 .deprecated = field_ref.deprecated(),
                             };
                         },
                         .Bool => {
-                            fields[field_index] = static.Table.Field{
+                            fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
                                 .type = .bool,
                                 .deprecated = field_ref.deprecated(),
@@ -299,7 +299,7 @@ pub const Parser = struct {
                         .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
                             const enum_index = field_type.index();
                             if (enum_index == -1) {
-                                fields[field_index] = static.Table.Field{
+                                fields[field_index] = types.Table.Field{
                                     .name = try copyName(arena_allocator, field_name),
                                     .type = .{ .int = try getInteger(field_base_type) },
                                     .deprecated = field_ref.deprecated(),
@@ -316,7 +316,7 @@ pub const Parser = struct {
                                     if (default_integer > 0 and !std.math.isPowerOfTwo(default_integer))
                                         return error.InvalidTable;
 
-                                    fields[field_index] = static.Table.Field{
+                                    fields[field_index] = types.Table.Field{
                                         .name = try copyName(arena_allocator, field_name),
                                         .type = .{ .bit_flags = .{ .name = bit_flags_ref_name } },
                                         .deprecated = field_ref.deprecated(),
@@ -324,7 +324,7 @@ pub const Parser = struct {
                                     };
                                 } else {
                                     const enum_ref_name = try copyName(arena_allocator, enum_ref.name());
-                                    fields[field_index] = static.Table.Field{
+                                    fields[field_index] = types.Table.Field{
                                         .name = try copyName(arena_allocator, field_name),
                                         .type = .{ .@"enum" = .{ .name = enum_ref_name } },
                                         .deprecated = field_ref.deprecated(),
@@ -334,7 +334,7 @@ pub const Parser = struct {
                             }
                         },
                         .Float, .Double => {
-                            fields[field_index] = static.Table.Field{
+                            fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
                                 .type = .{ .float = try getFloat(field_base_type) },
                                 .deprecated = field_ref.deprecated(),
@@ -342,7 +342,7 @@ pub const Parser = struct {
                             };
                         },
                         .String => {
-                            fields[field_index] = static.Table.Field{
+                            fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
                                 .type = .string,
                                 .deprecated = field_ref.deprecated(),
@@ -351,7 +351,7 @@ pub const Parser = struct {
                         },
                         .Vector => {
                             const element = field_type.element();
-                            const element_type: static.Vector.Element = get_element: switch (element) {
+                            const element_type: types.Vector.Element = get_element: switch (element) {
                                 .Bool => .bool,
                                 .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => .{ .int = try getInteger(element) },
                                 .Float, .Double => .{ .float = try getFloat(element) },
@@ -370,7 +370,7 @@ pub const Parser = struct {
 
                             // TODO: validate element_size somehow
 
-                            fields[field_index] = static.Table.Field{
+                            fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
                                 .type = .{ .vector = .{ .element = element_type } },
                                 .deprecated = field_ref.deprecated(),
@@ -382,14 +382,14 @@ pub const Parser = struct {
                             const object_ref_name = try copyName(arena_allocator, field_type_object.name());
 
                             if (field_type_object.is_struct()) {
-                                fields[field_index] = static.Table.Field{
+                                fields[field_index] = types.Table.Field{
                                     .name = try copyName(arena_allocator, field_name),
                                     .type = .{ .@"struct" = .{ .name = object_ref_name } },
                                     .deprecated = field_ref.deprecated(),
                                     .required = field_ref.required(),
                                 };
                             } else {
-                                fields[field_index] = static.Table.Field{
+                                fields[field_index] = types.Table.Field{
                                     .name = try copyName(arena_allocator, field_name),
                                     .type = .{ .table = .{ .name = object_ref_name } },
                                     .deprecated = field_ref.deprecated(),
@@ -408,7 +408,7 @@ pub const Parser = struct {
                     field_index += 1;
                 }
 
-                var table = static.Table{
+                var table = types.Table{
                     .name = try copyName(arena_allocator, object_name),
                     .fields = fields,
                 };
@@ -420,12 +420,12 @@ pub const Parser = struct {
             }
         }
 
-        var schema = static.Schema{
-            .bit_flags = try arena_allocator.dupe(static.BitFlags, self.bit_flags_list.items),
-            .enums = try arena_allocator.dupe(static.Enum, self.enum_list.items),
-            .structs = try arena_allocator.dupe(static.Struct, self.struct_list.items),
-            .tables = try arena_allocator.dupe(static.Table, self.table_list.items),
-            .unions = try arena_allocator.dupe(static.Union, self.union_list.items),
+        var schema = types.Schema{
+            .bit_flags = try arena_allocator.dupe(types.BitFlags, self.bit_flags_list.items),
+            .enums = try arena_allocator.dupe(types.Enum, self.enum_list.items),
+            .structs = try arena_allocator.dupe(types.Struct, self.struct_list.items),
+            .tables = try arena_allocator.dupe(types.Table, self.table_list.items),
+            .unions = try arena_allocator.dupe(types.Union, self.union_list.items),
         };
 
         if (self.root.root_table()) |object|
@@ -468,24 +468,24 @@ pub const Parser = struct {
     }
 };
 
-inline fn getInteger(base_type: reflection.BaseType) !static.Integer {
+inline fn getInteger(base_type: reflection.BaseType) !types.Integer {
     return switch (base_type) {
-        .Byte => static.Integer.i8,
-        .Short => static.Integer.i16,
-        .Int => static.Integer.i32,
-        .Long => static.Integer.i64,
-        .UByte => static.Integer.u8,
-        .UShort => static.Integer.u16,
-        .UInt => static.Integer.u32,
-        .ULong => static.Integer.u64,
+        .Byte => types.Integer.i8,
+        .Short => types.Integer.i16,
+        .Int => types.Integer.i32,
+        .Long => types.Integer.i64,
+        .UByte => types.Integer.u8,
+        .UShort => types.Integer.u16,
+        .UInt => types.Integer.u32,
+        .ULong => types.Integer.u64,
         else => return error.InvalidInteger,
     };
 }
 
-inline fn getFloat(base_type: reflection.BaseType) !static.Float {
+inline fn getFloat(base_type: reflection.BaseType) !types.Float {
     return switch (base_type) {
-        .Float => static.Float.f32,
-        .Double => static.Float.f64,
+        .Float => types.Float.f32,
+        .Double => types.Float.f64,
         else => return error.InvalidFloat,
     };
 }

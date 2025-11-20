@@ -55,11 +55,17 @@ pub const reflection = struct {
 
     ///  New schema language features that are not supported by old code generators.
     pub const AdvancedFeatures = packed struct {
-        pub const @"#kind" = flatbuffers.Kind{
-            .BitFlags = .{
-                .backing_integer = u64,
-                .flags = &.{ 1, 2, 4, 8 },
+        pub const @"#kind" = flatbuffers.Kind.BitFlags;
+        pub const @"#type" = .{
+            .name = "reflection.AdvancedFeatures",
+            .backing_integer = .u64,
+            .fields = .{
+                .{ .name = "AdvancedArrayFeatures", .value = 1 },
+                .{ .name = "AdvancedUnionFeatures", .value = 2 },
+                .{ .name = "OptionalScalars", .value = 4 },
+                .{ .name = "DefaultVectorsAndStrings", .value = 8 },
             },
+            .documentation = .{" New schema language features that are not supported by old code generators."},
         };
 
         AdvancedArrayFeatures: bool = false,

@@ -389,6 +389,12 @@ pub const BitFlags = struct {
     fields: []const BitFlags.Field,
     documentation: ?[]const []const u8 = null,
 
+    pub inline fn format(self: BitFlags, writer: *std.io.Writer) !void {
+        try std.zon.stringify.serialize(self, .{
+            .emit_default_optional_fields = false,
+        }, writer);
+    }
+
     pub fn write(self: BitFlags, writer: *std.io.Writer) !void {
         if (self.documentation) |documentation|
             for (documentation) |line|
@@ -403,14 +409,13 @@ pub const BitFlags = struct {
             try flags_writer.print("{d}", .{field.value});
         }
 
-        const flags = flags_writer.buffered();
-
         try writer.print(
             \\pub const {s} = packed struct {{
             \\    pub const @"#kind" = flatbuffers.Kind.BitFlags;
+            \\    pub const @"#type" = {f};
             \\
             \\
-        , .{ pop(self.name), @tagName(self.backing_integer), flags });
+        , .{ pop(self.name), self });
 
         for (self.fields) |field| {
             if (field.documentation) |documentation|
