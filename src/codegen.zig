@@ -1,7 +1,8 @@
 const std = @import("std");
-const types = @import("types.zig");
 
-const flatbuffers = @import("flatbuffers.zig");
+const flatbuffers = @import("flatbuffers");
+const types = flatbuffers.types;
+
 const reflection = @import("reflection.zig").reflection;
 
 pub const Parser = struct {
@@ -21,7 +22,7 @@ pub const Parser = struct {
     bit_flags_list: std.ArrayList(types.BitFlags) = std.ArrayList(types.BitFlags).empty,
 
     pub fn init(allocator: std.mem.Allocator, data: []align(8) const u8) Parser {
-        const root = try decodeRoot(reflection.Schema, data);
+        const root = try flatbuffers.decodeRoot(reflection.Schema, data);
         const objects = root.objects();
         const enums = root.enums();
         return .{
@@ -94,7 +95,7 @@ pub const Parser = struct {
                     const object = try self.getObject(t.index());
                     if (object.is_struct())
                         return error.InvalidUnion;
-                    if (!std.mem.eql(u8, enum_val_name, types.pop(object.name())))
+                    if (!std.mem.eql(u8, enum_val_name, pop(object.name())))
                         return error.InvalidUnion;
 
                     option.* = .{ .table = .{ .name = try copyName(arena_allocator, enum_val_name) } };
@@ -525,14 +526,379 @@ fn findAttribute(attributes: flatbuffers.Vector(reflection.KeyValue), key: [:0]c
     return null;
 }
 
-pub fn decodeRoot(comptime T: type, data: []align(8) const u8) !T {
-    const start = flatbuffers.Ref{
-        .ptr = data.ptr,
-        .len = @truncate(data.len),
-        .offset = 0,
-    };
+inline fn pop(name: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, name, '.')) |end| {
+        return name[end + 1 ..];
+    } else {
+        return name;
+    }
+}
 
-    return .{ .@"#ref" = start.uoffset() };
+const Escape = struct {
+    name: []const u8,
+
+    pub fn format(self: Escape, writer: *std.io.Writer) !void {
+        var iter = std.mem.splitScalar(u8, self.name, '.');
+        var i: usize = 0;
+        while (iter.next()) |term| : (i += 1) {
+            if (i > 0)
+                try writer.writeByte('.');
+            try writer.print("@\"{s}\"", .{term});
+        }
+    }
+};
+
+inline fn esc(name: []const u8) Escape {
+    return .{ .name = name };
+}
+
+pub fn writeEnum(self: types.Enum, writer: *std.io.Writer) !void {
+    if (self.documentation) |documentation|
+        for (documentation) |line|
+            try writer.print("/// {s}\n", .{line});
+
+    try writer.print(
+        \\pub const @"{s}" = enum({s}) {{
+        \\    pub const @"#type" = {f};
+        \\
+        \\
+    , .{ pop(self.name), @tagName(self.backing_integer), self });
+
+    for (self.values) |value| {
+        if (value.documentation) |documentation|
+            for (documentation) |line|
+                try writer.print("    /// {s}\n", .{line});
+        try writer.print(
+            \\    @"{s}" = {d},
+            \\
+        , .{ value.name, value.value });
+    }
+
+    try writer.writeAll("};\n\n");
+}
+
+pub fn writeUnion(self: types.Union, writer: *std.io.Writer) !void {
+    if (self.documentation) |documentation|
+        for (documentation) |line|
+            try writer.print("/// {s}\n", .{line});
+
+    try writer.print(
+        \\pub const @"{s}" = union(enum(u8)) {{
+        \\    pub const @"#type" = {f};
+        \\
+        \\
+    , .{ pop(self.name), self });
+
+    try writer.writeAll(
+        \\    NONE: void = 0,
+        \\
+    );
+    for (self.options, 1..) |option, value| {
+        if (option.documentation) |documentation|
+            for (documentation) |line|
+                try writer.print("    /// {s}\n", .{line});
+        try writer.print(
+            \\    @"{s}": {f} = {d},
+            \\
+        , .{ pop(option.table.name), esc(option.table.name), value });
+    }
+
+    try writer.writeAll("};\n\n");
+}
+
+pub fn writeTable(self: types.Table, writer: *std.io.Writer) !void {
+    if (self.documentation) |documentation|
+        for (documentation) |line|
+            try writer.print("/// {s}\n", .{line});
+
+    try writer.print(
+        \\pub const @"{s}" = struct {{
+        \\    pub const @"#kind" = flatbuffers.Kind.Table;
+        \\    pub const @"#type" = {f};
+        \\
+        \\    @"#ref": flatbuffers.Ref,
+        \\
+        \\
+    , .{ pop(self.name), self });
+
+    var field_id: u16 = 0;
+    for (self.fields) |field| {
+        if (field.deprecated) {
+            field_id += 1;
+            if (field.type == .@"union")
+                field_id += 1;
+            continue;
+        }
+
+        if (field.documentation) |documentation|
+            for (documentation) |line|
+                try writer.print("    /// {s}\n", .{line});
+
+        try writer.print(
+            \\    pub fn @"{s}"(@"#self": @"{s}")
+        , .{ field.name, pop(self.name) });
+
+        switch (field.type) {
+            .bool => try writer.print(
+                \\ bool {{
+                \\        return flatbuffers.decodeScalarField(bool, {d}, @"#self".@"#ref", {});
+                \\    }}
+            , .{ field_id, field.default_integer != 0 }),
+            .int => |int| try writer.print(
+                \\ {s} {{
+                \\        return flatbuffers.decodeScalarField({s}, {d}, @"#self".@"#ref", {d});
+                \\    }}
+            , .{ @tagName(int), @tagName(int), field_id, field.default_integer }),
+            .float => |float| try writer.print(
+                \\ {s} {{
+                \\        return flatbuffers.decodeScalarField({s}, {d}, @"#self".@"#ref", {d});
+                \\    }}
+            , .{ @tagName(float), @tagName(float), field_id, field.default_real }),
+            .@"enum" => |enum_t| try writer.print(
+                \\ {f} {{
+                \\        return flatbuffers.decodeEnumField({f}, {d}, @"#self".@"#ref", @enumFromInt({d}));
+                \\    }}
+            , .{ esc(enum_t.name), esc(enum_t.name), field_id, field.default_integer }),
+            .bit_flags => |bit_flags| {
+                // TODO: default bit flag values
+                try writer.print(
+                    \\ {f} {{
+                    \\        return flatbuffers.decodeBitFlagsField({f}, {d}, @"#self".@"#ref", {s}{{}});
+                    \\    }}
+                , .{ esc(bit_flags.name), esc(bit_flags.name), field_id, bit_flags.name });
+            },
+            .string => if (field.required) {
+                try writer.print(
+                    \\ flatbuffers.String {{
+                    \\        return flatbuffers.decodeStringField({d}, @"#self".@"#ref") orelse
+                    \\            @panic("missing {s}.{s} field");
+                    \\    }}
+                , .{ field_id, self.name, field.name });
+            } else {
+                try writer.print(
+                    \\ ?flatbuffers.String {{
+                    \\        return flatbuffers.decodeStringField({d}, @"#self".@"#ref");
+                    \\    }}
+                , .{field_id});
+            },
+            .vector => |vector| if (field.required) {
+                try writer.print(
+                    \\ flatbuffers.Vector({f}) {{
+                    \\        return flatbuffers.decodeVectorField({f}, {d}, @"#self".@"#ref") orelse
+                    \\            @panic("missing {s}.{s} field");
+                    \\    }}
+                , .{ vector.element, vector.element, field_id, self.name, field.name });
+            } else {
+                try writer.print(
+                    \\ ?flatbuffers.Vector({f}) {{
+                    \\        return flatbuffers.decodeVectorField({f}, {d}, @"#self".@"#ref");
+                    \\    }}
+                , .{ vector.element, vector.element, field_id });
+            },
+            .table => |table| if (field.required) {
+                try writer.print(
+                    \\ {f} {{
+                    \\        return flatbuffers.decodeTableField({f}, {d}, @"#self".@"#ref") orelse
+                    \\            @panic("missing {s}.{s} field");
+                    \\    }}
+                , .{ esc(table.name), esc(table.name), field_id, self.name, field.name });
+            } else {
+                try writer.print(
+                    \\ ?{f} {{
+                    \\        return flatbuffers.decodeTableField({f}, {d}, @"#self".@"#ref");
+                    \\    }}
+                , .{ esc(table.name), esc(table.name), field_id });
+            },
+            .@"struct" => |struct_t| {
+                _ = struct_t;
+                return error.NotImplemented;
+            },
+            .@"union" => |union_t| {
+                try writer.print(
+                    \\ {f} {{
+                    \\        return flatbuffers.decodeUnionField({f}, {d}, {d}, @"#self".@"#ref");
+                    \\    }}
+                , .{ esc(union_t.name), esc(union_t.name), field_id, field_id + 1 });
+
+                field_id += 1;
+            },
+        }
+
+        field_id += 1;
+
+        _ = try writer.splatByte('\n', 2);
+    }
+
+    try writer.writeAll("};\n\n");
+}
+
+pub fn writeStruct(self: types.Struct, writer: *std.io.Writer) !void {
+    if (self.documentation) |documentation|
+        for (documentation) |line|
+            try writer.print("/// {s}\n", .{line});
+
+    try writer.print(
+        \\pub const @"{s}" = struct {{
+        \\    pub const @"#kind" = flatbuffers.Kind.Struct;
+        \\    pub const @"#type" = {f};
+        \\
+    , .{ pop(self.name), self });
+
+    for (self.fields) |field| {
+        if (field.documentation) |documentation|
+            for (documentation) |line|
+                try writer.print("    /// {s}\n", .{line});
+        try writer.print(
+            \\    @"{s}": {f},
+            \\
+        , .{ field.name, field.type });
+    }
+
+    try writer.writeAll("};\n\n");
+}
+
+pub fn writeBitFlags(self: types.BitFlags, writer: *std.io.Writer) !void {
+    if (self.documentation) |documentation|
+        for (documentation) |line|
+            try writer.print("/// {s}\n", .{line});
+
+    var flags_buffer: [256]u8 = undefined;
+    var flags_writer = std.io.Writer.fixed(&flags_buffer);
+    for (self.fields, 0..) |field, i| {
+        if (i > 0)
+            try flags_writer.writeAll(", ");
+
+        try flags_writer.print("{d}", .{field.value});
+    }
+
+    try writer.print(
+        \\pub const {s} = packed struct {{
+        \\    pub const @"#kind" = flatbuffers.Kind.BitFlags;
+        \\    pub const @"#type" = {f};
+        \\
+        \\
+    , .{ pop(self.name), self });
+
+    for (self.fields) |field| {
+        if (field.documentation) |documentation|
+            for (documentation) |line|
+                try writer.print("    /// {s}\n", .{line});
+        try writer.print(
+            \\    @"{s}": bool = false,
+            \\
+        , .{field.name});
+    }
+
+    try writer.writeAll("};\n\n");
+}
+
+const NamespacePrefixMap = struct {
+    allocator: std.mem.Allocator,
+    map: std.StringArrayHashMapUnmanaged(usize) = std.StringArrayHashMapUnmanaged(usize).empty,
+
+    pub fn init(allocator: std.mem.Allocator) NamespacePrefixMap {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *NamespacePrefixMap) void {
+        self.map.deinit(self.allocator);
+    }
+
+    pub fn add(self: *NamespacePrefixMap, name: []const u8) !void {
+        var start: usize = 0;
+        while (std.mem.indexOfScalarPos(u8, name, start, '.')) |i| : (start = i + 1) {
+            const prefix = name[0 .. i + 1];
+            const level = std.mem.count(u8, prefix, ".");
+            try self.map.put(self.allocator, prefix, level);
+        }
+    }
+
+    pub fn sort(self: *NamespacePrefixMap) void {
+        self.map.sort(struct {
+            keys: [][]const u8,
+
+            pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+                return std.mem.lessThan(u8, ctx.keys[a_index], ctx.keys[b_index]);
+            }
+        }{ .keys = self.map.keys() });
+    }
+};
+
+pub fn writeSchema(self: types.Schema, allocator: std.mem.Allocator, writer: *std.io.Writer) !void {
+    try writer.writeAll(
+        \\const std = @import("std");
+        \\
+        \\const flatbuffers = @import("flatbuffers");
+        \\
+        \\
+    );
+
+    var namespaces = NamespacePrefixMap.init(allocator);
+    defer namespaces.deinit();
+
+    for (self.enums) |t| try namespaces.add(t.name);
+    for (self.bit_flags) |t| try namespaces.add(t.name);
+    for (self.structs) |t| try namespaces.add(t.name);
+    for (self.unions) |t| try namespaces.add(t.name);
+    for (self.tables) |t| try namespaces.add(t.name);
+
+    namespaces.sort();
+
+    const count = namespaces.map.count();
+    const keys = namespaces.map.keys();
+    const values = namespaces.map.values();
+    for (keys, values, 0..) |namespace, level, i| {
+        var name_start: usize = 0;
+        if (std.mem.lastIndexOfScalar(u8, namespace[0 .. namespace.len - 1], '.')) |last_index|
+            name_start = last_index + 1;
+        const name = namespace[name_start .. namespace.len - 1];
+        try writer.print("pub const {s} = struct ", .{name});
+        try writer.writeAll("{\n");
+
+        try writeNamespace(self, namespace, writer);
+
+        var closing_count = level;
+        if (i + 1 < count)
+            closing_count -= @min(level, values[i + 1]);
+
+        for (0..closing_count) |_|
+            try writer.writeAll("};\n");
+    }
+
+    // if (self.root.file_ident()) |file_identifier|
+    //     try writer.print("pub const file_identifier = \"{s}\";\n", .{file_identifier});
+
+    // if (self.root.file_ext()) |file_extension|
+    //     try writer.print("pub const file_extension = \"{s}\";\n", .{file_extension});
+
+}
+
+fn writeNamespace(schema: types.Schema, namespace: []const u8, writer: *std.io.Writer) !void {
+    for (schema.enums) |t|
+        if (isInNamespace(namespace, t.name))
+            try writeEnum(t, writer);
+
+    for (schema.bit_flags) |t|
+        if (isInNamespace(namespace, t.name))
+            try writeBitFlags(t, writer);
+
+    for (schema.structs) |t|
+        if (isInNamespace(namespace, t.name))
+            try writeStruct(t, writer);
+
+    for (schema.unions) |t|
+        if (isInNamespace(namespace, t.name))
+            try writeUnion(t, writer);
+
+    for (schema.tables) |t|
+        if (isInNamespace(namespace, t.name))
+            try writeTable(t, writer);
+}
+
+fn isInNamespace(namespace: []const u8, name: []const u8) bool {
+    const end = std.mem.lastIndexOfScalar(u8, name, '.') orelse
+        return false;
+    return std.mem.eql(u8, namespace, name[0 .. end + 1]);
 }
 
 pub fn main() !void {
@@ -568,7 +934,7 @@ pub fn main() !void {
     const output = std.fs.File.stdout();
     var output_writer = output.writer(&buffer);
 
-    try result.schema.write(std.heap.c_allocator, &output_writer.interface);
+    try writeSchema(result.schema, std.heap.c_allocator, &output_writer.interface);
 
     try output_writer.interface.flush();
 }

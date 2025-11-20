@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const types = @import("types.zig");
+pub const types = @import("types.zig");
 
 pub const Ref = struct {
     ptr: [*]align(8) const u8,
@@ -61,14 +61,6 @@ pub const Ref = struct {
     }
 };
 
-pub const Type = union(enum) {
-    @"enum": types.Enum,
-    @"union": types.Union,
-    @"struct": types.Struct,
-    bit_flags: types.BitFlags,
-    table: types.Table,
-};
-
 /// Used to differentiate the kinds of struct declarations
 pub const Kind = enum {
     Table,
@@ -82,6 +74,7 @@ pub const String = [:0]const u8;
 pub fn Vector(comptime T: type) type {
     return struct {
         pub const @"#kind" = Kind.Vector;
+        pub const @"#type" = getVectorType(T);
         const item_size = getVectorElementSize(T);
 
         const Self = @This();
@@ -111,43 +104,45 @@ pub fn Vector(comptime T: type) type {
     };
 }
 
-// fn getVectorElementType(comptime T: type) static.Vector.Element {
-//     return switch (@typeInfo(T)) {
-//         .bool => static.Vector.Element.bool,
-//         .int => |info| static.Vector.Element{
-//             .int = switch (info.bits) {
-//                 8 => if (info.signed) .i8 else .u8,
-//                 16 => if (info.signed) .i16 else .u16,
-//                 32 => if (info.signed) .i32 else .u32,
-//                 64 => if (info.signed) .i64 else .u64,
-//                 else => @compileError("invalid integer type"),
-//             },
-//         },
-//         .float => |info| static.Vector.Element{
-//             .float = switch (info.bits) {
-//                 32 => .f32,
-//                 64 => .f64,
-//             },
-//         },
-//         .pointer => static.Vector.Element.string,
-//         .@"enum" => static.Vector.Element{
-//             .@"enum" = .{ .name = @as(static.Enum, @field(T, "#type")).name },
-//         },
-//         .@"struct" => switch (@field(T, "#kind")) {
-//             Kind.Table => static.Vector.Element{
-//                 .table = .{ .name = @as(static.Table, @field(T, "#type")).name },
-//             },
-//             Kind.Vector => @compileError("cannot nest vectors"),
-//             Kind.Struct => static.Vector.Element{
-//                 .@"struct" = .{ .name = @as(static.Struct, @field(T, "#type")).name },
-//             },
-//             Kind.BitFlags => static.Vector.Element{
-//                 .bit_flags = .{ .name = @as(static.BitFlags, @field(T, "#type")).name },
-//             },
-//         },
-//         else => @compileError("invalid vector type"),
-//     };
-// }
+fn getVectorType(comptime T: type) types.Vector {
+    const element = switch (@typeInfo(T)) {
+        .bool => types.Vector.Element.bool,
+        .int => |info| types.Vector.Element{
+            .int = switch (info.bits) {
+                8 => if (info.signed) .i8 else .u8,
+                16 => if (info.signed) .i16 else .u16,
+                32 => if (info.signed) .i32 else .u32,
+                64 => if (info.signed) .i64 else .u64,
+                else => @compileError("invalid integer type"),
+            },
+        },
+        .float => |info| types.Vector.Element{
+            .float = switch (info.bits) {
+                32 => .f32,
+                64 => .f64,
+            },
+        },
+        .pointer => types.Vector.Element.string,
+        .@"enum" => types.Vector.Element{
+            .@"enum" = .{ .name = @as(types.Enum, @field(T, "#type")).name },
+        },
+        .@"struct" => switch (@field(T, "#kind")) {
+            Kind.Table => types.Vector.Element{
+                .table = .{ .name = @as(types.Table, @field(T, "#type")).name },
+            },
+            Kind.Vector => @compileError("cannot nest vectors"),
+            Kind.Struct => types.Vector.Element{
+                .@"struct" = .{ .name = @as(types.Struct, @field(T, "#type")).name },
+            },
+            Kind.BitFlags => types.Vector.Element{
+                .bit_flags = .{ .name = @as(types.BitFlags, @field(T, "#type")).name },
+            },
+        },
+        else => @compileError("invalid vector type"),
+    };
+
+    return types.Vector{ .element = element };
+}
 
 fn getVectorElementSize(comptime T: type) u32 {
     return switch (@typeInfo(T)) {
@@ -174,7 +169,7 @@ fn getVectorElementSize(comptime T: type) u32 {
     };
 }
 
-pub fn getStructSize(comptime T: type) u32 {
+fn getStructSize(comptime T: type) u32 {
     switch (@typeInfo(T)) {
         .int, .float, .bool => return @sizeOf(T),
         .array => |info| return info.len * getStructSize(info.child),
@@ -192,7 +187,7 @@ pub fn getStructSize(comptime T: type) u32 {
     }
 }
 
-pub fn getStructAlignment(comptime T: type) u32 {
+fn getStructAlignment(comptime T: type) u32 {
     switch (@typeInfo(T)) {
         .int, .float, .bool => return @sizeOf(T),
         .@"enum" => |info| return @sizeOf(info.tag_type),
@@ -345,4 +340,14 @@ fn getFieldRef(table_ref: Ref, comptime id: u16) ?Ref {
         return null;
 
     return table_ref.add(vtable_entry);
+}
+
+pub fn decodeRoot(comptime T: type, data: []align(8) const u8) !T {
+    const start = Ref{
+        .ptr = data.ptr,
+        .len = @truncate(data.len),
+        .offset = 0,
+    };
+
+    return .{ .@"#ref" = start.uoffset() };
 }

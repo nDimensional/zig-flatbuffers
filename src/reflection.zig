@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const flatbuffers = @import("flatbuffers.zig");
+const flatbuffers = @import("flatbuffers");
 
 pub const reflection = struct {
     pub const BaseType = enum(i8) {
