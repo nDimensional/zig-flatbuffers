@@ -4,34 +4,50 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const parse_module = b.createModule(.{
+    const flatbuffers = b.addModule("flatbuffers", .{
+        .root_source_file = b.path("src/flatbuffers.zig"),
         .target = target,
         .optimize = optimize,
-        .root_source_file = b.path("src/parse.zig"),
     });
 
-    const parse = b.addExecutable(.{
-        .name = "parse",
-        .root_module = parse_module,
+    const codegen_module = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/codegen.zig"),
+        .imports = &.{
+            .{ .name = "flatbuffers", .module = flatbuffers },
+        },
     });
 
-    b.installArtifact(parse);
-
-    // example.zig
-
-    const example = b.addExecutable(.{
-        .name = "example",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("example.zig"),
-        }),
+    const codegen = b.addExecutable(.{
+        .name = "generate",
+        .root_module = codegen_module,
     });
 
-    b.installArtifact(example);
+    b.installArtifact(codegen);
 
-    const example_run = b.addRunArtifact(example);
-    b.step("run", "run example.zig").dependOn(&example_run.step);
+    const codegen_run = b.addRunArtifact(codegen);
+    if (b.args) |args|
+        codegen_run.addArgs(args);
 
-    b.step("check", "Check if example.zig compiles").dependOn(&example.step);
+    b.installArtifact(codegen);
+    b.step("generate", "generate").dependOn(&codegen_run.step);
+
+    // // example.zig
+
+    // const example = b.addExecutable(.{
+    //     .name = "example",
+    //     .root_module = b.createModule(.{
+    //         .target = target,
+    //         .optimize = optimize,
+    //         .root_source_file = b.path("example.zig"),
+    //     }),
+    // });
+
+    // b.installArtifact(example);
+
+    // const example_run = b.addRunArtifact(example);
+    // b.step("run", "run example.zig").dependOn(&example_run.step);
+
+    // b.step("check", "Check if example.zig compiles").dependOn(&example.step);
 }
