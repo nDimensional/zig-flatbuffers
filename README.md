@@ -1,18 +1,26 @@
 # zig-flatbuffers
 
-**Very WIP.**
+**Very WIP.** Currently only supports decoding.
+
+## Overview
+
+This project implements a code generator for efficient FlatBuffers decoders in Zig.
+
+First, a binary `.bfbs` schema file is decoded into an IR defined in `src/types.zig`. The code generator in `src/codegen.zig` then consumes this IR and emits Zig source code containing type definitions and field accessors specific to the given schema. The generated code uses generic functions from a runtime `flatbuffers` module to perform safe, typed, zero-copy access on serialized data.
+
+The repo includes a special pre-generated file, `src/reflection.zig`, which is a decoder for the FlatBuffers reflection schema (`reflection.fbs`, the "schema schema"). This allows the code generator to read `.bfbs` files, creating a bootstrapping loop where the code generator both imports `reflection.zig` and can reproduce it byte-for-byte when run on `reflection.fbs`.
 
 ## Usage
 
 ### Codegen
 
-First, compile your Flatbuffers schema to a binary .bfbs file
+First, compile your Flatbuffers schema to a binary `.bfbs` file using the `flatc` CLI (via [homebrew](<[flatbuffers](https://formulae.brew.sh/formula/flatbuffers)>), [Ubuntu](https://packages.ubuntu.com/noble/flatbuffers-compiler), [Debian](https://packages.debian.org/sid/flatbuffers-compiler) etc).
 
 ```
 flatc -b --schema --bfbs-comments --bfbs-builtins myschema.fbs
 ```
 
-Then generate a Zig decoder library for you schema with
+Then generate a Zig decoder library for your schema with
 
 ```sh
 zig build generate -- myschema.bfbs | zig fmt --stdin
