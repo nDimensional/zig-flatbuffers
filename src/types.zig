@@ -130,10 +130,6 @@ pub const Struct = struct {
         pub const Array = struct {
             len: u32,
             element: Struct.Field.Type,
-
-            pub inline fn format(self: Array, writer: *std.io.Writer) !void {
-                try writer.print("[{f}:{d}]", .{ self.element, self.len });
-            }
         };
 
         pub const Type = union(enum) {
@@ -148,7 +144,7 @@ pub const Struct = struct {
                     .bool => try writer.writeAll("bool"),
                     .int => |int| try writer.writeAll(@tagName(int)),
                     .float => |float| try writer.writeAll(@tagName(float)),
-                    .array => |array| try array.format(writer),
+                    .array => |array| try writer.print("[{f}:{d}]", .{ array.element, array.len }),
                     .@"struct" => |t| try esc(t.name).format(writer),
                 }
             }

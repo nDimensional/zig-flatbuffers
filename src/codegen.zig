@@ -555,7 +555,7 @@ inline fn esc(name: []const u8) Escape {
 pub fn writeEnum(self: types.Enum, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
-            try writer.print("/// {s}\n", .{line});
+            try writer.print("///{s}\n", .{line});
 
     try writer.print(
         \\pub const @"{s}" = enum({s}) {{
@@ -567,7 +567,7 @@ pub fn writeEnum(self: types.Enum, writer: *std.io.Writer) !void {
     for (self.values) |value| {
         if (value.documentation) |documentation|
             for (documentation) |line|
-                try writer.print("    /// {s}\n", .{line});
+                try writer.print("    ///{s}\n", .{line});
         try writer.print(
             \\    @"{s}" = {d},
             \\
@@ -580,7 +580,7 @@ pub fn writeEnum(self: types.Enum, writer: *std.io.Writer) !void {
 pub fn writeUnion(self: types.Union, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
-            try writer.print("/// {s}\n", .{line});
+            try writer.print("///{s}\n", .{line});
 
     try writer.print(
         \\pub const @"{s}" = union(enum(u8)) {{
@@ -596,7 +596,7 @@ pub fn writeUnion(self: types.Union, writer: *std.io.Writer) !void {
     for (self.options, 1..) |option, value| {
         if (option.documentation) |documentation|
             for (documentation) |line|
-                try writer.print("    /// {s}\n", .{line});
+                try writer.print("    ///{s}\n", .{line});
         try writer.print(
             \\    @"{s}": {f} = {d},
             \\
@@ -609,7 +609,7 @@ pub fn writeUnion(self: types.Union, writer: *std.io.Writer) !void {
 pub fn writeTable(self: types.Table, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
-            try writer.print("/// {s}\n", .{line});
+            try writer.print("///{s}\n", .{line});
 
     try writer.print(
         \\pub const @"{s}" = struct {{
@@ -632,7 +632,7 @@ pub fn writeTable(self: types.Table, writer: *std.io.Writer) !void {
 
         if (field.documentation) |documentation|
             for (documentation) |line|
-                try writer.print("    /// {s}\n", .{line});
+                try writer.print("    ///{s}\n", .{line});
 
         try writer.print(
             \\    pub fn @"{s}"(@"#self": @"{s}")
@@ -735,7 +735,7 @@ pub fn writeTable(self: types.Table, writer: *std.io.Writer) !void {
 pub fn writeStruct(self: types.Struct, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
-            try writer.print("/// {s}\n", .{line});
+            try writer.print("///{s}\n", .{line});
 
     try writer.print(
         \\pub const @"{s}" = struct {{
@@ -747,7 +747,7 @@ pub fn writeStruct(self: types.Struct, writer: *std.io.Writer) !void {
     for (self.fields) |field| {
         if (field.documentation) |documentation|
             for (documentation) |line|
-                try writer.print("    /// {s}\n", .{line});
+                try writer.print("    ///{s}\n", .{line});
         try writer.print(
             \\    @"{s}": {f},
             \\
@@ -760,7 +760,7 @@ pub fn writeStruct(self: types.Struct, writer: *std.io.Writer) !void {
 pub fn writeBitFlags(self: types.BitFlags, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
-            try writer.print("/// {s}\n", .{line});
+            try writer.print("///{s}\n", .{line});
 
     var flags_buffer: [256]u8 = undefined;
     var flags_writer = std.io.Writer.fixed(&flags_buffer);
@@ -782,7 +782,7 @@ pub fn writeBitFlags(self: types.BitFlags, writer: *std.io.Writer) !void {
     for (self.fields) |field| {
         if (field.documentation) |documentation|
             for (documentation) |line|
-                try writer.print("    /// {s}\n", .{line});
+                try writer.print("    ///{s}\n", .{line});
         try writer.print(
             \\    @"{s}": bool = false,
             \\
