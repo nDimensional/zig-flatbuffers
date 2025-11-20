@@ -16,6 +16,18 @@ The repo includes a special pre-generated file, `src/reflection.zig`, which is a
 
 First, compile your Flatbuffers schema to a binary `.bfbs` file using the `flatc` CLI (via [homebrew](<[flatbuffers](https://formulae.brew.sh/formula/flatbuffers)>), [Ubuntu](https://packages.ubuntu.com/noble/flatbuffers-compiler), [Debian](https://packages.debian.org/sid/flatbuffers-compiler) etc).
 
+```fbs
+// myschema.fbs
+enum Fruit : byte { Banana = -1, Orange = 42 }
+
+table FooBar {
+    meal      : Fruit = Banana;
+    density   : long (deprecated);
+    say       : string;
+    height    : short;
+}
+```
+
 ```
 flatc -b --schema --bfbs-comments --bfbs-builtins myschema.fbs
 ```
@@ -76,4 +88,18 @@ const myschema = @import("myschema");
 // ...
 // data: []align(8) const u8
 const root = try flatbuffers.decodeRoot(myschema.FooBar, data);
+// root: myschema.FooBar
+```
+
+The result `root: myschema.FooBar` is a _table reference_, a lightweight pointer to an offset within `data` with accessor methods for all of the table fields from your schema.
+
+```zig
+const meal = root.meal();
+// meal: myschema.Fruit (a real Zig enum type!)
+
+const say = root.say();
+// say: [:0]const u8 (a regular slice into the original data buffer)
+
+const height = root.height();
+// height: u16 (a regular Zig integer value)
 ```
