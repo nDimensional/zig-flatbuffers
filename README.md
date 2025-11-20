@@ -14,7 +14,7 @@ The repo includes a special pre-generated file, `src/reflection.zig`, which is a
 
 ### Codegen
 
-First, compile your Flatbuffers schema to a binary `.bfbs` file using the `flatc` CLI (via [homebrew](<[flatbuffers](https://formulae.brew.sh/formula/flatbuffers)>), [Ubuntu](https://packages.ubuntu.com/noble/flatbuffers-compiler), [Debian](https://packages.debian.org/sid/flatbuffers-compiler) etc).
+First, compile your Flatbuffers schema to a binary `.bfbs` file using the `flatc` CLI (via [homebrew](https://formulae.brew.sh/formula/flatbuffers), [Ubuntu](https://packages.ubuntu.com/noble/flatbuffers-compiler), [Debian](https://packages.debian.org/sid/flatbuffers-compiler) etc).
 
 ```fbs
 // myschema.fbs
