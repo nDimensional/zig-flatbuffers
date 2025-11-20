@@ -4,23 +4,38 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const codegen_module = b.createModule(.{
+    {
+        const codegen_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .root_source_file = b.path("src/codegen.zig"),
+        });
+
+        const codegen = b.addExecutable(.{
+            .name = "codegen",
+            .root_module = codegen_module,
+        });
+
+        const codegen_run = b.addRunArtifact(codegen);
+        if (b.args) |args|
+            codegen_run.addArgs(args);
+
+        b.installArtifact(codegen);
+        b.step("generate", "generate").dependOn(&codegen_run.step);
+    }
+
+    const parse_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
-        .root_source_file = b.path("src/codegen.zig"),
+        .root_source_file = b.path("src/parse.zig"),
     });
 
-    const codegen = b.addExecutable(.{
-        .name = "codegen",
-        .root_module = codegen_module,
+    const parse = b.addExecutable(.{
+        .name = "parse",
+        .root_module = parse_module,
     });
 
-    const codegen_run = b.addRunArtifact(codegen);
-    if (b.args) |args|
-        codegen_run.addArgs(args);
-
-    b.installArtifact(codegen);
-    b.step("generate", "generate").dependOn(&codegen_run.step);
+    b.installArtifact(parse);
 
     // example.zig
 

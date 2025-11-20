@@ -5,7 +5,6 @@ const String = flatbuffers.String;
 const Vector = flatbuffers.Vector;
 
 const reflection = @import("reflection.zig").reflection;
-const decodeRoot = @import("reflection.zig").decodeRoot;
 
 const Generator = struct {
     allocator: std.mem.Allocator,
@@ -19,7 +18,7 @@ const Generator = struct {
     namespace_prefix_map: std.StringArrayHashMapUnmanaged(usize),
 
     pub fn init(allocator: std.mem.Allocator, data: []align(8) const u8) !Generator {
-        const schema = decodeRoot(data);
+        const schema = try decodeRoot(reflection.Schema, data);
         const enums = schema.enums();
         const objects = schema.objects();
 
@@ -165,14 +164,12 @@ const Generator = struct {
     inline fn getEnum(self: *Generator, enum_index: i32) !reflection.Enum {
         if (enum_index < 0 or enum_index >= self.enums.len())
             return error.InvalidEnumIndex;
-
         return self.enums.at(@intCast(enum_index));
     }
 
     inline fn getObject(self: *Generator, object_index: i32) !reflection.Object {
         if (object_index < 0 or object_index >= self.objects.len())
-            return error.InvalidEnumIndex;
-
+            return error.InvalidObjectIndex;
         return self.objects.at(@intCast(object_index));
     }
 
@@ -310,7 +307,7 @@ const Generator = struct {
 
             if (field_base_type == .UType) {
                 const next_field_id = field_id + 1;
-                if (next_field_id >= object_fields.len)
+                if (next_field_id >= object_fields.len())
                     return error.InvalidFieldType;
                 const next_field_ref = object_fields.at(object_field_map[next_field_id]);
                 const next_field_type = next_field_ref.type();
@@ -321,7 +318,7 @@ const Generator = struct {
             }
 
             if (field.documentation()) |documentation|
-                for (0..documentation.len) |k|
+                for (0..documentation.len()) |k|
                     try writer.print("    /// {s}\n", .{documentation.at(k)});
 
             try writer.print("    pub fn @\"{s}\"(@\"#self\": {s})", .{ field_name, object_name });
@@ -492,7 +489,7 @@ const Generator = struct {
 
         try writer.print(
             \\pub const {s} = struct {{
-            \\    pub const @"#kind" = flatbuffers.Kind.Struct,
+            \\    pub const @"#kind" = flatbuffers.Kind.Struct;
             \\
             \\
         , .{object_name});
@@ -557,6 +554,16 @@ const Generator = struct {
         return field_map;
     }
 };
+
+pub fn decodeRoot(comptime T: type, data: []align(8) const u8) !T {
+    const start = flatbuffers.Ref{
+        .ptr = data.ptr,
+        .len = @truncate(data.len),
+        .offset = 0,
+    };
+
+    return .{ .@"#ref" = start.uoffset() };
+}
 
 fn hasBitFlags(enum_ref: reflection.Enum) bool {
     const attributes = enum_ref.attributes() orelse return false;
