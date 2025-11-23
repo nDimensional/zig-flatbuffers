@@ -2,6 +2,14 @@
 
 **Very WIP.** Currently only supports decoding.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Usage](#usage)
+  - [Codegen](#codegen)
+  - [Runtime](#runtime)
+- [License](#license)
+
 ## Overview
 
 This project implements a code generator for efficient FlatBuffers decoders in Zig, for Zig.
@@ -49,6 +57,11 @@ Save the output to a file such as `myschema.zig` and check it into your repo.
 ### Runtime
 
 To use the generated library, you will also have to add the `flatbuffers` module as a runtime dependency.
+
+```
+zig fetch --save=flatbuffers \
+  https://github.com/nDimensional/zig-flatbuffers/archive/refs/{COMMIT_HASH}.tar.gz
+```
 
 In build.zig:
 
@@ -103,3 +116,7 @@ const say = root.say();
 const height = root.height();
 // height: u16 (a regular Zig integer value)
 ```
+
+## License
+
+MIT © 2025 nDimensional Studios
