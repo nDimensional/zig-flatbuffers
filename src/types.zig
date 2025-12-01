@@ -9,11 +9,27 @@ pub const Integer = enum {
     i32,
     u64,
     i64,
+
+    pub fn getSize(self: Integer) u32 {
+        return switch (self) {
+            .u8, .i8 => 1,
+            .u16, .i16 => 2,
+            .u32, .i32 => 4,
+            .u64, .i64 => 8,
+        };
+    }
 };
 
 pub const Float = enum {
     f32,
     f64,
+
+    pub fn getSize(self: Float) u32 {
+        return switch (self) {
+            .f32 => 4,
+            .f64 => 8,
+        };
+    }
 };
 
 pub const EnumRef = struct { name: []const u8 };
@@ -104,6 +120,28 @@ pub const Vector = struct {
         table: TableRef,
         string,
 
+        pub fn getSize(self: Element, schema: *const Schema) !u32 {
+            return switch (self) {
+                .bool => @sizeOf(u8),
+                .int => |int_t| int_t.getSize(),
+                .float => |float_t| float_t.getSize(),
+                .@"enum" => |enum_ref| {
+                    const enum_t = try schema.getEnum(enum_ref);
+                    return enum_t.backing_integer.getSize();
+                },
+                .@"struct" => |struct_ref| {
+                    const struct_t = try schema.getStruct(struct_ref);
+                    return try struct_t.getSize(schema);
+                },
+                .bit_flags => |bit_flags_ref| {
+                    const bit_flags_t = try schema.getBitFlags(bit_flags_ref);
+                    return bit_flags_t.backing_integer.getSize();
+                },
+                .table => @sizeOf(u32),
+                .string => @sizeOf(u32),
+            };
+        }
+
         pub fn format(self: Element, writer: *std.io.Writer) !void {
             switch (self) {
                 .bool => try writer.writeAll("bool"),
@@ -139,6 +177,19 @@ pub const Struct = struct {
             array: *const Struct.Field.Array,
             @"struct": StructRef,
 
+            pub fn getSize(self: Type, schema: *const Schema) error{InvalidRef}!u32 {
+                return switch (self) {
+                    .bool => 1,
+                    .int => |int_t| int_t.getSize(),
+                    .float => |float_t| float_t.getSize(),
+                    .array => |array_t| array_t.len * try array_t.element.getSize(schema),
+                    .@"struct" => |struct_ref| {
+                        const struct_t = try schema.getStruct(struct_ref);
+                        return try struct_t.getSize(schema);
+                    },
+                };
+            }
+
             pub fn format(self: Type, writer: *std.io.Writer) !void {
                 switch (self) {
                     .bool => try writer.writeAll("bool"),
@@ -158,6 +209,13 @@ pub const Struct = struct {
     name: []const u8,
     fields: []const Struct.Field,
     documentation: ?[]const []const u8 = null,
+
+    pub fn getSize(self: Struct, schema: *const Schema) error{InvalidRef}!u32 {
+        var size: u32 = 0;
+        for (self.fields) |field|
+            size += try field.type.getSize(schema);
+        return size;
+    }
 
     pub fn format(self: Struct, writer: *std.io.Writer) !void {
         std.zon.stringify.serializeMaxDepth(self, .{
@@ -198,15 +256,99 @@ pub const Schema = struct {
     bit_flags: []const BitFlags,
 
     root_table: ?TableRef = null,
-};
 
-inline fn pop(name: []const u8) []const u8 {
-    if (std.mem.lastIndexOfScalar(u8, name, '.')) |end| {
-        return name[end + 1 ..];
-    } else {
-        return name;
+    pub fn format(self: Schema, writer: *std.io.Writer) !void {
+        std.zon.stringify.serializeMaxDepth(self, .{
+            .emit_default_optional_fields = false,
+        }, writer, 16) catch return error.WriteFailed;
     }
-}
+
+    pub fn getEnum(self: *const Schema, enum_ref: EnumRef) !*const Enum {
+        for (self.enums) |*enum_t|
+            if (std.mem.eql(u8, enum_t.name, enum_ref.name))
+                return enum_t;
+        return error.InvalidRef;
+    }
+
+    pub fn getStruct(self: *const Schema, struct_ref: StructRef) !*const Struct {
+        for (self.structs) |*struct_t|
+            if (std.mem.eql(u8, struct_t.name, struct_ref.name))
+                return struct_t;
+        return error.InvalidRef;
+    }
+
+    pub fn getTable(self: *const Schema, table_ref: TableRef) !*const Table {
+        for (self.tables) |*table_t|
+            if (std.mem.eql(u8, table_t.name, table_ref.name))
+                return table_t;
+        return error.InvalidRef;
+    }
+
+    pub fn getUnion(self: *const Schema, union_ref: UnionRef) !*const Union {
+        for (self.unions) |*union_t|
+            if (std.mem.eql(u8, union_t.name, union_ref.name))
+                return union_t;
+        return error.InvalidRef;
+    }
+
+    pub fn getBitFlags(self: Schema, bit_flags_ref: BitFlagsRef) !*const BitFlags {
+        for (self.bit_flags) |*bit_flags_t|
+            if (std.mem.eql(u8, bit_flags_t.name, bit_flags_ref.name))
+                return bit_flags_t;
+        return error.InvalidRef;
+    }
+
+    pub fn getStructSize(self: *const Schema, struct_t: *const Struct) !u32 {
+        var size: u32 = 0;
+        for (struct_t.fields) |field| {
+            const field_alignment = try self.getStructFieldTypeAlignment(field.type);
+            size = std.mem.alignForward(u32, size, field_alignment);
+            size += try self.getStructFieldTypeSize(field.type);
+        }
+
+        const struct_alignment = try self.getStructAlignment(struct_t);
+        return std.mem.alignForward(u32, size, struct_alignment);
+    }
+
+    fn getStructFieldTypeSize(self: *const Schema, field_type: Struct.Field.Type) !u32 {
+        return switch (field_type) {
+            .bool => 1,
+            .int => |int| int.getSize(),
+            .float => |float| float.getSize(),
+            .array => |array| {
+                const array_element_size = try self.getStructFieldTypeSize(array.element);
+                return array.len * array_element_size;
+            },
+            .@"struct" => |struct_ref| {
+                const struct_t = try self.getStruct(struct_ref);
+                return try self.getStructSize(struct_t);
+            },
+        };
+    }
+
+    pub fn getStructAlignment(self: *const Schema, struct_t: *const Struct) !u32 {
+        var max_alignment: u32 = 0;
+        for (struct_t.fields) |field| {
+            const field_alignment = try self.getStructFieldTypeAlignment(field);
+            max_alignment = @max(max_alignment, field_alignment);
+        }
+
+        return max_alignment;
+    }
+
+    fn getStructFieldTypeAlignment(self: *const Schema, field_type: Struct.Field.Type) !u32 {
+        return switch (field_type) {
+            .bool => 1,
+            .int => |int| int.getSize(),
+            .float => |float| float.getSize(),
+            .array => |array| try self.getStructFieldTypeAlignment(array.element),
+            .@"struct" => |struct_ref| {
+                const struct_t = try self.getStruct(struct_ref);
+                return try self.getStructAlignment(struct_t);
+            },
+        };
+    }
+};
 
 const Escape = struct {
     name: []const u8,
