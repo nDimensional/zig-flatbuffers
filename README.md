@@ -85,6 +85,47 @@ zig build generate -- myschema.zon | zig fmt --stdin > myschema.zig
 
 Save the output to a file `myschema.zig` in the **same directory** as the `.zon` IR. You should check both files into your repo.
 
+The generated library will something like this:
+
+```zig
+const std = @import("std");
+
+const flatbuffers = @import("flatbuffers");
+
+const @"#schema": flatbuffers.types.Schema = @import("simple.zon");
+
+pub const Fruit = enum(i8) {
+    pub const @"#kind" = flatbuffers.Kind.Enum;
+    pub const @"#root" = &@"#schema";
+    pub const @"#type" = &@"#schema".unions[0];
+
+    Banana = -1,
+    Orange = 42,
+};
+
+pub const FooBar = struct {
+    pub const @"#kind" = flatbuffers.Kind.Table;
+    pub const @"#root" = &@"#schema";
+    pub const @"#type" = &@"#schema".tables[0];
+
+    @"#ref": flatbuffers.Ref,
+
+    pub fn meal(@"#self": FooBar) Fruit {
+        return flatbuffers.decodeEnumField(Fruit, 0, @"#self".@"#ref", @enumFromInt(-1));
+    }
+
+    pub fn say(@"#self": FooBar) ?flatbuffers.String {
+        return flatbuffers.decodeStringField(2, @"#self".@"#ref");
+    }
+
+    pub fn height(@"#self": FooBar) i16 {
+        return flatbuffers.decodeScalarField(i16, 3, @"#self".@"#ref", 0);
+    }
+};
+```
+
+Notice that `Fruit` is declared as a regular Zig enum type, and that the `FooBar` table is a struct with accessor methods for all of its fields. All internal declarations and fields are prefixed with `#` to prevent collisions with table field names.
+
 ### Runtime
 
 To use the generated library, you will also have to add the `flatbuffers` module as a runtime dependency.
