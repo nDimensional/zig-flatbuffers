@@ -15,32 +15,32 @@
 This project implements a code generator for efficient FlatBuffers decoders for Zig, in Zig.
 
 ```
-┌──────────────────┐
-Schema        │                  │
-│   myschema.fbs   │
-│                  │
-└──────────────────┘
-          │
-          │  flatc
-          ▼
-┌──────────────────┐                     ┌──────────────────┐
-Binary schema │                  │   zig build parse   │                  │ IR
-│  myschema.bfbs   │────────────────────▶│   myschema.zon   │
-│                  │                     │                  │
-└──────────────────┘                     └──────────────────┘
-                                            ▲      │
-                                            │      │ zig build generate
-                                            │      │
-                                            └───┐  │
-                                        @import │  │
-                                                │  │
-                                                │  │
-          Runtime library                       │  ▼
-         ┌──────────────────┐            ┌──────────────────┐
-         │                  │   @import  │                  │ Encoder/decoder
-         │   flatbuffers    │◀───────────│   myschema.zig   │ library
-         │                  │            │                  │
-         └──────────────────┘            └──────────────────┘
+              ┌──────────────────┐                                                         
+Schema        │                  │                                                         
+              │   myschema.fbs   │                                                         
+              │                  │                                                         
+              └──────────────────┘                                                         
+                        │                                                                  
+                        │  flatc                                                           
+                        ▼                                                                  
+              ┌──────────────────┐                     ┌──────────────────┐                
+Binary schema │                  │   zig build parse   │                  │ IR             
+              │  myschema.bfbs   │────────────────────▶│   myschema.zon   │                
+              │                  │                     │                  │                
+              └──────────────────┘                     └──────────────────┘                
+                                                          ▲      │                         
+                                                          │      │ zig build generate      
+                                                          │      │                         
+                                                          └───┐  │                         
+                                                      @import │  │                         
+                                                              │  │                         
+                                                              │  │                         
+                        Runtime library                       │  ▼                         
+                       ┌──────────────────┐            ┌──────────────────┐                
+                       │                  │   @import  │                  │ Encoder/decoder
+                       │   flatbuffers    │◀───────────│   myschema.zig   │ library        
+                       │                  │            │                  │                
+                       └──────────────────┘            └──────────────────┘                
 ```
 
 First, a binary `.bfbs` schema file is decoded into a static `.zon` IR. Then, a codegen step consumes this IR and emits Zig source code containing type definitions and field accessors for the schema. The generated code uses generic functions from a runtime `flatbuffers` module to perform safe, typed, zero-copy access on serialized data.
