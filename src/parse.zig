@@ -98,7 +98,7 @@ pub const Parser = struct {
                     if (!std.mem.eql(u8, enum_val_name, pop(object.name())))
                         return error.InvalidUnion;
 
-                    option.* = .{ .table = .{ .name = try copyName(arena_allocator, enum_val_name) } };
+                    option.* = .{ .table = .{ .name = try copyName(arena_allocator, object.name()) } };
                     if (enum_val.documentation()) |documentation|
                         option.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
