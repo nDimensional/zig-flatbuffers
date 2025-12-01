@@ -76,7 +76,6 @@ pub const String = [:0]const u8;
 pub fn Vector(comptime T: type) type {
     return struct {
         pub const @"#kind" = Kind.Vector;
-        pub const @"#type" = getVectorType(T);
         const item_size = getVectorElementSize(T);
 
         const Self = @This();
@@ -127,18 +126,18 @@ fn getVectorType(comptime T: type) types.Vector {
         },
         .pointer => types.Vector.Element.string,
         .@"enum" => types.Vector.Element{
-            .@"enum" = .{ .name = @as(types.Enum, @field(T, "#type")).name },
+            .@"enum" = .{ .name = @as(*const types.Enum, @field(T, "#type")).name },
         },
         .@"struct" => switch (@field(T, "#kind")) {
             Kind.Table => types.Vector.Element{
-                .table = .{ .name = @as(types.Table, @field(T, "#type")).name },
+                .table = .{ .name = @as(*const types.Table, @field(T, "#type")).name },
             },
             Kind.Vector => @compileError("cannot nest vectors"),
             Kind.Struct => types.Vector.Element{
-                .@"struct" = .{ .name = @as(types.Struct, @field(T, "#type")).name },
+                .@"struct" = .{ .name = @as(*const types.Struct, @field(T, "#type")).name },
             },
             Kind.BitFlags => types.Vector.Element{
-                .bit_flags = .{ .name = @as(types.BitFlags, @field(T, "#type")).name },
+                .bit_flags = .{ .name = @as(*const types.BitFlags, @field(T, "#type")).name },
             },
             Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
         },
@@ -158,7 +157,7 @@ fn getVectorElementSize(comptime T: type) u32 {
             Kind.Vector => @compileError("cannot nest vectors"),
             Kind.Struct => getStructSize(T),
             Kind.BitFlags => {
-                const bit_flags: types.BitFlags = @field(T, "#type");
+                const bit_flags: *const types.BitFlags = @field(T, "#type");
                 return switch (bit_flags.backing_integer) {
                     .u8 => 1,
                     .u16 => 2,
@@ -265,7 +264,7 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
     const ref_ref = ref_field_ref.uoffset();
 
     inline for (tag_info.fields) |tag_field| {
-        if (tag_field.value == tag_value) {
+        if (tag_field.value > 0 and tag_field.value == tag_value) {
             return @unionInit(T, tag_field.name, .{ .offset = ref_ref });
         }
     }
@@ -292,7 +291,7 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
         else => @compileError("expected bit flags type"),
     };
 
-    const bit_flags: types.BitFlags = comptime @field(T, "#type");
+    const bit_flags: *const types.BitFlags = comptime @field(T, "#type");
 
     if (bit_flags.fields.len != info.fields.len)
         @compileError("invalid bit flag fields");
@@ -338,7 +337,7 @@ fn decodeStruct(comptime T: type, ref: Ref) T {
     if (@field(T, "#kind") != Kind.Struct)
         @compileError("expected struct type");
 
-    const struct_t: types.Struct = comptime @field(T, "#type");
+    const struct_t: *const types.Struct = comptime @field(T, "#type");
 
     var result: T = undefined;
     inline for (struct_t.fields) |field| {
