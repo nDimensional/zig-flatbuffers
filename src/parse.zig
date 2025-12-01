@@ -56,7 +56,7 @@ pub const Parser = struct {
         const arena_allocator = arena.allocator();
 
         for (0..self.enums.len()) |i| {
-            const enum_ref = self.enums.at(i);
+            const enum_ref = self.enums.get(i);
             const enum_name = enum_ref.name();
             const base_type = enum_ref.underlying_type().base_type();
 
@@ -71,7 +71,7 @@ pub const Parser = struct {
 
                 const options = try arena_allocator.alloc(types.Union.Option, enum_values_len - 1);
 
-                const none_val = enum_values.at(0);
+                const none_val = enum_values.get(0);
                 if (none_val.value() != 0)
                     return error.InvalidUnion;
                 if (none_val.union_type()) |union_type|
@@ -81,7 +81,7 @@ pub const Parser = struct {
                     return error.InvalidUnion;
 
                 for (options, 1..) |*option, j| {
-                    const enum_val = enum_values.at(j);
+                    const enum_val = enum_values.get(j);
                     const enum_val_name = enum_val.name();
                     const value = enum_val.value();
                     if (value != @as(i64, @intCast(j)))
@@ -121,7 +121,7 @@ pub const Parser = struct {
                 const fields = try arena_allocator.alloc(types.BitFlags.Field, enum_values_len);
 
                 for (fields, 0..) |*field, j| {
-                    const enum_val = enum_values.at(j);
+                    const enum_val = enum_values.get(j);
                     const enum_val_name = enum_val.name();
                     const value = enum_val.value();
                     if (value < 1 or !std.math.isPowerOfTwo(value))
@@ -151,7 +151,7 @@ pub const Parser = struct {
 
                 const values = try arena_allocator.alloc(types.Enum.Value, enum_values_len);
                 for (values, 0..) |*value, j| {
-                    const enum_val = enum_values.at(j);
+                    const enum_val = enum_values.get(j);
                     const enum_val_name = enum_val.name();
                     const enum_val_value = enum_val.value();
                     // TODO: check bounds on enum_val_value
@@ -178,7 +178,7 @@ pub const Parser = struct {
         }
 
         for (0..self.objects.len()) |i| {
-            const object_ref = self.objects.at(i);
+            const object_ref = self.objects.get(i);
             const object_name = object_ref.name();
 
             const object_fields = object_ref.fields();
@@ -190,7 +190,7 @@ pub const Parser = struct {
                 const fields = try arena_allocator.alloc(types.Struct.Field, object_fields_len);
 
                 for (fields, 0..) |*field, j| {
-                    const field_ref = object_fields.at(j);
+                    const field_ref = object_fields.get(j);
                     const field_name = field_ref.name();
                     const field_type = field_ref.type();
 
@@ -272,14 +272,14 @@ pub const Parser = struct {
 
                 // this is just a first pass to do validation and count the number of union fields
                 for (field_map, 0..) |j, field_id| {
-                    const field_ref = object_fields.at(j);
+                    const field_ref = object_fields.get(j);
                     std.debug.assert(field_id == field_ref.id());
                     const field_type = field_ref.type();
                     switch (field_type.base_type()) {
                         .UType => {
                             if (field_id >= object_fields_len - 1)
                                 return error.InvalidTable;
-                            const next_field = object_fields.at(field_map[field_id + 1]);
+                            const next_field = object_fields.get(field_map[field_id + 1]);
                             const next_field_type = next_field.type();
                             if (next_field_type.base_type() != .Union)
                                 return error.InvalidTable;
@@ -289,7 +289,7 @@ pub const Parser = struct {
                         .Union => {
                             if (field_id == 0)
                                 return error.InvalidTable;
-                            const prev_field = object_fields.at(field_map[field_id - 1]);
+                            const prev_field = object_fields.get(field_map[field_id - 1]);
                             const prev_field_type = prev_field.type();
                             if (prev_field_type.base_type() != .UType)
                                 return error.InvalidTable;
@@ -303,7 +303,7 @@ pub const Parser = struct {
 
                 var field_index: usize = 0;
                 for (field_map, 0..) |j, field_id| {
-                    const field_ref = object_fields.at(j);
+                    const field_ref = object_fields.get(j);
                     std.debug.assert(field_id == field_ref.id());
                     const field_type = field_ref.type();
                     const field_name = field_ref.name();
@@ -472,7 +472,7 @@ pub const Parser = struct {
 
         @memset(field_map, empty);
         for (0..fields.len()) |i| {
-            const id = fields.at(i).id();
+            const id = fields.get(i).id();
             if (id >= fields.len())
                 return error.InvalidFieldId;
             if (field_map[id] != empty)
@@ -487,14 +487,14 @@ pub const Parser = struct {
         if (enum_index < 0 or enum_index >= self.enums.len())
             return error.InvalidEnumIndex;
 
-        return self.enums.at(@intCast(enum_index));
+        return self.enums.get(@intCast(enum_index));
     }
 
     inline fn getObject(self: *Parser, object_index: i32) !reflection.Object {
         if (object_index < 0 or object_index >= self.objects.len())
             return error.InvalidObjectIndex;
 
-        return self.objects.at(@intCast(object_index));
+        return self.objects.get(@intCast(object_index));
     }
 };
 
@@ -532,7 +532,7 @@ fn copyDocumentation(allocator: std.mem.Allocator, value: flatbuffers.Vector(fla
     var i: usize = 0;
     errdefer for (0..i) |j| allocator.free(result[j]);
     while (i < len) : (i += 1)
-        result[i] = try copyName(allocator, value.at(i));
+        result[i] = try copyName(allocator, value.get(i));
 
     return result;
 }
@@ -545,7 +545,7 @@ fn hasBitFlags(enum_ref: reflection.Enum) bool {
 
 fn findAttribute(attributes: flatbuffers.Vector(reflection.KeyValue), key: [:0]const u8) ?reflection.KeyValue {
     for (0..attributes.len()) |i| {
-        const attribute = attributes.at(i);
+        const attribute = attributes.get(i);
         const attribute_key = attribute.key();
         if (std.mem.eql(u8, key, attribute_key)) {
             return attribute;

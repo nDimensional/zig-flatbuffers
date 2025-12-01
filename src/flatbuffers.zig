@@ -87,7 +87,7 @@ pub fn Vector(comptime T: type) type {
             return self.@"#ref".decodeScalar(u32);
         }
 
-        pub fn at(self: Self, index: usize) T {
+        pub fn get(self: Self, index: usize) T {
             const i: u32 = @truncate(index);
             const item_ref = self.@"#ref".add(@sizeOf(u32) + item_size * i);
             return switch (@typeInfo(T)) {
@@ -96,7 +96,7 @@ pub fn Vector(comptime T: type) type {
                 .@"enum" => item_ref.decodeEnum(T),
                 .@"struct" => switch (@field(T, "#kind")) {
                     Kind.Table => decodeTable(T, item_ref),
-                    Kind.Struct => @compileError("not implemented"),
+                    Kind.Struct => decodeStruct(T, item_ref),
                     Kind.BitFlags => decodeBitFlags(T, item_ref),
                     Kind.Vector => @compileError("cannot nest vectors"),
                     Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
