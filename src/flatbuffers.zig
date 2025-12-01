@@ -226,11 +226,11 @@ pub inline fn decodeBitFlagsField(comptime T: type, comptime id: u16, table_ref:
     return decodeBitFlags(T, field_ref);
 }
 
-pub fn decodeStructField(comptime T: type, comptime id: u16, table_ref: Ref, comptime default: T) T {
+pub fn decodeStructField(comptime T: type, comptime id: u16, table_ref: Ref) ?T {
     const field_ref = getFieldRef(table_ref, id) orelse
-        return default;
-    _ = field_ref;
-    @panic("not implemented");
+        return null;
+
+    return decodeStruct(T, field_ref);
 }
 
 pub inline fn decodeTableField(comptime T: type, comptime id: u16, table_ref: Ref) ?T {
@@ -285,9 +285,12 @@ pub inline fn decodeStringField(comptime id: u16, table_ref: Ref) ?String {
 }
 
 inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
+    if (@field(T, "#kind") != Kind.BitFlags)
+        @compileError("expected bit flags type");
+
     const info = switch (@typeInfo(T)) {
         .@"struct" => |info| info,
-        else => @compileError("expected bit flags struct"),
+        else => @compileError("expected bit flags type"),
     };
 
     const bit_flags: types.BitFlags = comptime @field(T, "#type");
@@ -315,6 +318,9 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
 }
 
 inline fn decodeTable(comptime T: type, ref: Ref) T {
+    if (@field(T, "#kind") != Kind.Table)
+        @compileError("expected table type");
+
     return T{ .@"#ref" = ref.uoffset() };
 }
 
@@ -327,6 +333,47 @@ fn decodeString(ref: Ref) String {
     const str_len = str_ref.decodeScalar(u32);
     const offset = str_ref.offset + @sizeOf(u32);
     return str_ref.ptr[offset .. offset + str_len :0];
+}
+
+fn decodeStruct(comptime T: type, ref: Ref) T {
+    if (@field(T, "#kind") != Kind.Struct)
+        @compileError("expected struct type");
+
+    const struct_t: types.Struct = comptime @field(T, "#type");
+
+    var result: T = undefined;
+    inline for (struct_t.fields) |field| {
+        const FieldType = @FieldType(T, field.name);
+
+        @field(result, field.name) = undefined;
+        const field_ref = ref.add(field.offset);
+        @field(result, field.name) = get_field: switch (field.type) {
+            .bool, .int, .float => field_ref.decodeScalar(FieldType),
+            .array => |array| {
+                const array_info = switch (@typeInfo(FieldType)) {
+                    .array => |info| info,
+                    else => @compileError("expected array type"),
+                };
+
+                if (array_info.len != array.len)
+                    @compileError("expected equal array lengths");
+
+                var array_result: FieldType = undefined;
+                for (&array_result, 0..) |*element, i| {
+                    const element_ref = field_ref.add(@intCast(i * array.element_size));
+                    element.* = switch (field.type) {
+                        .bool, .int, .float => element_ref.decodeScalar(array.element),
+                        .array => @compileError("not implemented (nested arrays)"),
+                        .@"struct" => decodeStruct(array.element, element_ref),
+                    };
+                }
+                break :get_field result;
+            },
+            .@"struct" => decodeStruct(FieldType, field_ref),
+        };
+    }
+
+    return result;
 }
 
 fn getFieldRef(table_ref: Ref, comptime id: u16) ?Ref {

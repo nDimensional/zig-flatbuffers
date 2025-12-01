@@ -197,31 +197,60 @@ pub const Parser = struct {
                     field.* = types.Struct.Field{
                         .name = try copyName(arena_allocator, field_name),
                         .type = .bool,
+                        .offset = field_ref.offset(),
                     };
 
                     const base_type = field_type.base_type();
-                    switch (base_type) {
-                        .Bool => field.type = .bool,
+                    field.type = get_field: switch (base_type) {
+                        .Bool => .bool,
                         .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
-                            field.type = .{ .int = try getInteger(base_type) };
+                            const int = try getInteger(base_type);
+                            break :get_field .{ .int = int };
                         },
                         .Float, .Double => {
-                            field.type = .{ .float = try getFloat(base_type) };
+                            const float = try getFloat(base_type);
+                            break :get_field .{ .float = float };
                         },
                         .Obj => {
                             const field_object = try self.getObject(field_type.index());
                             if (!field_object.is_struct())
-                                return error.NotImplemented;
+                                return error.InvalidStruct;
+
                             const field_struct_name = try copyName(arena_allocator, field_object.name());
-                            field.type = .{ .@"struct" = .{ .name = field_struct_name } };
+                            break :get_field .{ .@"struct" = .{ .name = field_struct_name } };
                         },
                         .Array => {
-                            return error.NotImplemented;
+                            const array = try arena_allocator.create(flatbuffers.types.Struct.Field.Array);
+                            array.len = field_type.fixed_length();
+                            array.element_size = field_type.element_size();
+                            array.element = get_element: switch (field_type.element()) {
+                                .Bool => .bool,
+                                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
+                                    const int = try getInteger(base_type);
+                                    break :get_element .{ .int = int };
+                                },
+                                .Float, .Double => {
+                                    const float = try getFloat(base_type);
+                                    break :get_element .{ .float = float };
+                                },
+                                .Obj => {
+                                    const field_object = try self.getObject(field_type.index());
+                                    if (!field_object.is_struct())
+                                        return error.InvalidStruct;
+
+                                    const field_struct_name = try copyName(arena_allocator, field_object.name());
+                                    break :get_element .{ .@"struct" = .{ .name = field_struct_name } };
+                                },
+                                .Array => return error.NotImplemented,
+                                else => return error.InvalidArray,
+                            };
+
+                            break :get_field .{ .array = array };
                         },
                         .UType, .Union, .String, .Vector, .Vector64, .None, .MaxBaseType => {
                             return error.InvalidStruct;
                         },
-                    }
+                    };
 
                     if (field_ref.documentation()) |documentation|
                         field.documentation = try copyDocumentation(arena_allocator, documentation);

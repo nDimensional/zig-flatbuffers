@@ -166,7 +166,8 @@ pub const Vector = struct {
 pub const Struct = struct {
     pub const Field = struct {
         pub const Array = struct {
-            len: u32,
+            len: u16,
+            element_size: u32,
             element: Struct.Field.Type,
         };
 
@@ -203,6 +204,7 @@ pub const Struct = struct {
 
         name: []const u8,
         type: Struct.Field.Type,
+        offset: u16,
         documentation: ?[]const []const u8 = null,
     };
 

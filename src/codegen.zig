@@ -143,14 +143,11 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
                 \\        return flatbuffers.decodeEnumField({f}, {d}, @"#self".@"#ref", @enumFromInt({d}));
                 \\    }}
             , .{ esc(enum_t.name), esc(enum_t.name), field_id, field.default_integer }),
-            .bit_flags => |bit_flags| {
-                // TODO: default bit flag values
-                try writer.print(
-                    \\ {f} {{
-                    \\        return flatbuffers.decodeBitFlagsField({f}, {d}, @"#self".@"#ref", {s}{{}});
-                    \\    }}
-                , .{ esc(bit_flags.name), esc(bit_flags.name), field_id, bit_flags.name });
-            },
+            .bit_flags => |bit_flags| try writer.print(
+                \\ {f} {{
+                \\        return flatbuffers.decodeBitFlagsField({f}, {d}, @"#self".@"#ref", {s}{{}});
+                \\    }}
+            , .{ esc(bit_flags.name), esc(bit_flags.name), field_id, bit_flags.name }),
             .string => if (field.required) {
                 try writer.print(
                     \\ flatbuffers.String {{
@@ -179,23 +176,33 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
                     \\    }}
                 , .{ vector.element, vector.element, field_id });
             },
-            .table => |table| if (field.required) {
+            .table => |table_ref| if (field.required) {
                 try writer.print(
                     \\ {f} {{
                     \\        return flatbuffers.decodeTableField({f}, {d}, @"#self".@"#ref") orelse
                     \\            @panic("missing {s}.{s} field");
                     \\    }}
-                , .{ esc(table.name), esc(table.name), field_id, self.name, field.name });
+                , .{ esc(table_ref.name), esc(table_ref.name), field_id, self.name, field.name });
             } else {
                 try writer.print(
                     \\ ?{f} {{
                     \\        return flatbuffers.decodeTableField({f}, {d}, @"#self".@"#ref");
                     \\    }}
-                , .{ esc(table.name), esc(table.name), field_id });
+                , .{ esc(table_ref.name), esc(table_ref.name), field_id });
             },
-            .@"struct" => |struct_t| {
-                _ = struct_t;
-                return error.NotImplemented;
+            .@"struct" => |struct_ref| if (field.required) {
+                try writer.print(
+                    \\ {f} {{
+                    \\        return flatbuffers.decodeStructField({f}, {d}, @"#self".@"#ref") orelse
+                    \\            @panic("missing {s}.{s} field");
+                    \\    }}
+                , .{ esc(struct_ref.name), esc(struct_ref.name), field_id, self.name, field.name });
+            } else {
+                try writer.print(
+                    \\ ?{f} {{
+                    \\        return flatbuffers.decodeStructField({f}, {d}, @"#self".@"#ref");
+                    \\    }}
+                , .{ esc(struct_ref.name), esc(struct_ref.name), field_id });
             },
             .@"union" => |union_t| {
                 try writer.print(
