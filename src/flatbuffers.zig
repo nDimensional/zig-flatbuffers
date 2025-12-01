@@ -265,7 +265,7 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
 
     inline for (tag_info.fields) |tag_field| {
         if (tag_field.value > 0 and tag_field.value == tag_value) {
-            return @unionInit(T, tag_field.name, .{ .offset = ref_ref });
+            return @unionInit(T, tag_field.name, .{ .@"#ref" = ref_ref });
         }
     }
 }
