@@ -40,7 +40,7 @@ pub fn writeEnum(self: types.Enum, index: usize, writer: *std.io.Writer) !void {
         \\pub const @"{s}" = enum({s}) {{
         \\    pub const @"#kind" = flatbuffers.Kind.Enum;
         \\    pub const @"#root" = &@"#schema";
-        \\    pub const @"#type" = &@"#schema".unions[{d}];
+        \\    pub const @"#type" = &@"#schema".enums[{d}];
         \\
         \\
     , .{ pop(self.name), @tagName(self.backing_integer), index });
