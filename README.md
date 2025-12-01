@@ -92,7 +92,7 @@ const std = @import("std");
 
 const flatbuffers = @import("flatbuffers");
 
-const @"#schema": flatbuffers.types.Schema = @import("simple.zon");
+const @"#schema": flatbuffers.types.Schema = @import("myschema.zon");
 
 pub const Fruit = enum(i8) {
     pub const @"#kind" = flatbuffers.Kind.Enum;
