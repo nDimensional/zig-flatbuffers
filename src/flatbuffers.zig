@@ -241,13 +241,12 @@ pub inline fn decodeTableField(comptime T: type, comptime id: u16, table_ref: Re
 
 pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime ref_id: u16, table_ref: Ref) T {
     const tag_type: type = switch (@typeInfo(T)) {
-        .@"union" => |info| info.tag_type orelse
-            @compileError("expected tagged union type"),
+        .@"union" => |info| info.tag_type,
         else => @compileError("expected tagged union type"),
-    };
+    } orelse @compileError("expected tagged union type");
 
-    const tag_fields = switch (@typeInfo(tag_type)) {
-        .@"enum" => |info| info.fields,
+    const tag_info = switch (@typeInfo(tag_type)) {
+        .@"enum" => |info| info,
         else => @compileError("expected enum tag type"),
     };
 
@@ -255,7 +254,7 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
         return @unionInit(T, "NONE", {});
 
     const data = tag_field_ref.ptr[tag_field_ref.offset..tag_field_ref.len][0..@sizeOf(tag_type)];
-    const tag_value = std.mem.readInt(tag_type, data, .little);
+    const tag_value = std.mem.readInt(tag_info.tag_type, data, .little);
 
     if (tag_value == 0)
         return @unionInit(T, "NONE", {});
@@ -265,7 +264,7 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
 
     const ref_ref = ref_field_ref.uoffset();
 
-    inline for (tag_fields) |tag_field| {
+    inline for (tag_info.fields) |tag_field| {
         if (tag_field.value == tag_value) {
             return @unionInit(T, tag_field.name, .{ .offset = ref_ref });
         }
