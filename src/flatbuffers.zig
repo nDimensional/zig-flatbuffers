@@ -268,6 +268,8 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
             return @unionInit(T, tag_field.name, .{ .@"#ref" = ref_ref });
         }
     }
+
+    return @unionInit(T, "NONE", {});
 }
 
 pub inline fn decodeVectorField(comptime T: type, comptime id: u16, table_ref: Ref) ?Vector(T) {
