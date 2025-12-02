@@ -598,5 +598,6 @@ pub fn main() !void {
     var stdout_writer = stdout.writer(&buffer);
 
     try result.schema.format(&stdout_writer.interface);
+    try stdout_writer.interface.writeByte('\n');
     try stdout_writer.interface.flush();
 }
