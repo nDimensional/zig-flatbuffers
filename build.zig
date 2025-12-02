@@ -10,47 +10,55 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const parse = b.addExecutable(.{
-        .name = "zfbs-parse",
-        .root_module = b.addModule("parse", .{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("src/parse.zig"),
-            .imports = &.{
-                .{ .name = "flatbuffers", .module = flatbuffers },
-            },
-        }),
+    const parse = b.addModule("parse", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/parse.zig"),
+        .imports = &.{
+            .{ .name = "flatbuffers", .module = flatbuffers },
+        },
     });
 
-    b.installArtifact(parse);
+    {
+        const exe = b.addExecutable(.{
+            .name = "zfbs-parse",
+            .root_module = parse,
+        });
 
-    const parse_run = b.addRunArtifact(parse);
-    if (b.args) |args|
-        parse_run.addArgs(args);
+        b.installArtifact(exe);
 
-    b.installArtifact(parse);
-    b.step("parse", "Parse a .bfbs schema into ZON IR").dependOn(&parse_run.step);
+        const run = b.addRunArtifact(exe);
+        if (b.args) |args|
+            run.addArgs(args);
 
-    const generate = b.addExecutable(.{
-        .name = "zfbs-generate",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("src/generate.zig"),
-            .imports = &.{
-                .{ .name = "flatbuffers", .module = flatbuffers },
-            },
-        }),
+        b.installArtifact(exe);
+        b.step("parse", "Parse a .bfbs schema into ZON IR").dependOn(&run.step);
+    }
+
+    const generate = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/generate.zig"),
+        .imports = &.{
+            .{ .name = "flatbuffers", .module = flatbuffers },
+        },
     });
 
-    b.installArtifact(generate);
+    {
+        const exe = b.addExecutable(.{
+            .name = "zfbs-generate",
+            .root_module = generate,
+        });
 
-    const generate_run = b.addRunArtifact(generate);
-    if (b.args) |args|
-        generate_run.addArgs(args);
+        b.installArtifact(exe);
 
-    b.installArtifact(generate);
-    b.step("generate", "generate").dependOn(&generate_run.step);
+        const run = b.addRunArtifact(exe);
+        if (b.args) |args|
+            run.addArgs(args);
+
+        b.installArtifact(exe);
+        b.step("generate", "Generate a decoder library for the ZON schema").dependOn(&run.step);
+    }
 
     // example.zig
 

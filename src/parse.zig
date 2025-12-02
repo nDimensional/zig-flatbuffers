@@ -3,7 +3,8 @@ const std = @import("std");
 const flatbuffers = @import("flatbuffers");
 const types = flatbuffers.types;
 
-const reflection = @import("reflection.zig").reflection;
+const lib = @import("reflection.zig");
+const reflection = lib.reflection;
 
 pub const Parser = struct {
     allocator: std.mem.Allocator,
