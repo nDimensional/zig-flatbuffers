@@ -89,6 +89,66 @@ pub fn writeUnion(self: types.Union, index: usize, writer: *std.io.Writer) !void
     try writer.writeAll("};\n\n");
 }
 
+const TableConstructor = struct {
+    table: types.Table,
+
+    pub fn format(self: TableConstructor, writer: *std.io.Writer) !void {
+        try writer.writeAll("struct {\n");
+
+        for (self.table.fields) |field| {
+            if (field.deprecated)
+                continue;
+
+            try writer.print("{f}: ", .{esc(field.name)});
+            switch (field.type) {
+                .bool => try writer.print("bool = {}", .{field.default_integer != 0}),
+                .float => |float| try writer.print("{s} = {d}", .{ @tagName(float), field.default_real }),
+                .int => |int| try writer.print("{s} = {d}", .{ @tagName(int), field.default_integer }),
+                .@"enum" => |enum_ref| try writer.print("{f} = @enumFromInt({d})", .{ esc(enum_ref.name), field.default_integer }),
+                .@"struct" => |struct_ref| {
+                    if (field.required)
+                        try writer.writeByte('?');
+                    try esc(struct_ref.name).format(writer);
+                },
+                .bit_flags => |bit_flags_ref| {
+                    try writer.print("{f} = .{{}}", .{esc(bit_flags_ref.name)});
+                },
+                .table => |table_ref| {
+                    if (field.required)
+                        try writer.writeByte('?');
+                    try esc(table_ref.name).format(writer);
+                },
+                .@"union" => |union_ref| {
+                    try writer.print("{f} = .NONE", .{esc(union_ref.name)});
+                },
+                .vector => |vector| {
+                    if (field.required)
+                        try writer.writeByte('?');
+                    try writer.writeAll("[]const ");
+                    switch (vector.element) {
+                        .bool => try writer.writeAll("bool"),
+                        .int => |int| try writer.writeAll(@tagName(int)),
+                        .float => |float| try writer.writeAll(@tagName(float)),
+                        .@"enum" => |enum_ref| try esc(enum_ref.name).format(writer),
+                        .@"struct" => |struct_ref| try esc(struct_ref.name).format(writer),
+                        .bit_flags => |bit_flags_ref| try esc(bit_flags_ref.name).format(writer),
+                        .table => |table_ref| try esc(table_ref.name).format(writer),
+                        .string => try writer.writeAll("[]const u8"),
+                    }
+                },
+                .string => {
+                    if (field.required)
+                        try writer.writeByte('?');
+                    try writer.writeAll("[]const u8");
+                },
+            }
+            try writer.writeAll(", ");
+        }
+
+        try writer.writeAll("}");
+    }
+};
+
 pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
@@ -99,11 +159,12 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
         \\    pub const @"#kind" = flatbuffers.Kind.Table;
         \\    pub const @"#root" = &@"#schema";
         \\    pub const @"#type" = &@"#schema".tables[{d}];
+        \\    pub const @"#constructor" = {f};
         \\
         \\    @"#ref": flatbuffers.Ref,
         \\
         \\
-    , .{ pop(self.name), index });
+    , .{ pop(self.name), index, TableConstructor{ .table = self } });
 
     var field_id: u16 = 0;
     for (self.fields) |field| {

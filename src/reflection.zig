@@ -8,7 +8,7 @@ pub const reflection = struct {
     pub const BaseType = enum(i8) {
         pub const @"#kind" = flatbuffers.Kind.Enum;
         pub const @"#root" = &@"#schema";
-        pub const @"#type" = &@"#schema".unions[0];
+        pub const @"#type" = &@"#schema".enums[0];
 
         None = 0,
         UType = 1,
@@ -48,6 +48,15 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[0];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            values: ?[]const reflection.EnumVal,
+            is_union: bool = false,
+            underlying_type: ?reflection.Type,
+            attributes: []const reflection.KeyValue,
+            documentation: []const []const u8,
+            declaration_file: []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -89,6 +98,13 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[1];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            value: i64 = 0,
+            union_type: reflection.Type,
+            documentation: []const []const u8,
+            attributes: []const reflection.KeyValue,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -119,6 +135,22 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[2];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            type: ?reflection.Type,
+            id: u16 = 0,
+            offset: u16 = 0,
+            default_integer: i64 = 0,
+            default_real: f64 = 0,
+            deprecated: bool = false,
+            required: bool = false,
+            key: bool = false,
+            attributes: []const reflection.KeyValue,
+            documentation: []const []const u8,
+            optional: bool = false,
+            padding: u16 = 0,
+            offset64: bool = false,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -188,6 +220,10 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[3];
+        pub const @"#constructor" = struct {
+            key: ?[]const u8,
+            value: []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -205,6 +241,16 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[4];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            fields: ?[]const reflection.Field,
+            is_struct: bool = false,
+            minalign: i32 = 0,
+            bytesize: i32 = 0,
+            attributes: []const reflection.KeyValue,
+            documentation: []const []const u8,
+            declaration_file: []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -249,6 +295,13 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[5];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            request: ?reflection.Object,
+            response: ?reflection.Object,
+            attributes: []const reflection.KeyValue,
+            documentation: []const []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -280,6 +333,16 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[6];
+        pub const @"#constructor" = struct {
+            objects: ?[]const reflection.Object,
+            enums: ?[]const reflection.Enum,
+            file_ident: []const u8,
+            file_ext: []const u8,
+            root_table: reflection.Object,
+            services: []const reflection.Service,
+            advanced_features: reflection.AdvancedFeatures = .{},
+            fbs_files: []const reflection.SchemaFile,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -327,6 +390,10 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[7];
+        pub const @"#constructor" = struct {
+            filename: ?[]const u8,
+            included_filenames: []const []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -346,6 +413,13 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[8];
+        pub const @"#constructor" = struct {
+            name: ?[]const u8,
+            calls: []const reflection.RPCCall,
+            attributes: []const reflection.KeyValue,
+            documentation: []const []const u8,
+            declaration_file: []const u8,
+        };
 
         @"#ref": flatbuffers.Ref,
 
@@ -376,6 +450,14 @@ pub const reflection = struct {
         pub const @"#kind" = flatbuffers.Kind.Table;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[9];
+        pub const @"#constructor" = struct {
+            base_type: reflection.BaseType = @enumFromInt(0),
+            element: reflection.BaseType = @enumFromInt(0),
+            index: i32 = -1,
+            fixed_length: u16 = 0,
+            base_size: u32 = 4,
+            element_size: u32 = 0,
+        };
 
         @"#ref": flatbuffers.Ref,
 
