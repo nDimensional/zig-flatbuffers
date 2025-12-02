@@ -565,8 +565,9 @@ inline fn pop(name: []const u8) []const u8 {
 }
 
 pub fn main() !void {
-    var args = std.process.args();
+    const allocator = std.heap.c_allocator;
 
+    var args = std.process.args();
     _ = args.next() orelse unreachable;
 
     const schema_path = args.next() orelse {
@@ -587,7 +588,7 @@ pub fn main() !void {
         0,
     );
 
-    var parser = try Parser.init(std.heap.c_allocator, @alignCast(data));
+    var parser = try Parser.init(allocator, @alignCast(data));
     defer parser.deinit();
 
     const result = try parser.parse();
@@ -600,4 +601,12 @@ pub fn main() !void {
     try result.schema.format(&stdout_writer.interface);
     try stdout_writer.interface.writeByte('\n');
     try stdout_writer.interface.flush();
+
+    var builder = flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    try builder.writeTable(reflection.Object, .{
+        .name = "wow",
+        .fields = &.{},
+    });
 }

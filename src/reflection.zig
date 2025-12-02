@@ -49,13 +49,13 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[0];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
-            values: ?[]const reflection.EnumVal,
+            name: []const u8,
+            values: []const reflection.EnumVal,
             is_union: bool = false,
-            underlying_type: ?reflection.Type,
-            attributes: []const reflection.KeyValue,
-            documentation: []const []const u8,
-            declaration_file: []const u8,
+            underlying_type: reflection.Type,
+            attributes: ?[]const reflection.KeyValue = null,
+            documentation: ?[]const []const u8 = null,
+            declaration_file: ?[]const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -99,11 +99,11 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[1];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
+            name: []const u8,
             value: i64 = 0,
-            union_type: reflection.Type,
-            documentation: []const []const u8,
-            attributes: []const reflection.KeyValue,
+            union_type: ?reflection.Type = null,
+            documentation: ?[]const []const u8 = null,
+            attributes: ?[]const reflection.KeyValue = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -136,8 +136,8 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[2];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
-            type: ?reflection.Type,
+            name: []const u8,
+            type: reflection.Type,
             id: u16 = 0,
             offset: u16 = 0,
             default_integer: i64 = 0,
@@ -145,8 +145,8 @@ pub const reflection = struct {
             deprecated: bool = false,
             required: bool = false,
             key: bool = false,
-            attributes: []const reflection.KeyValue,
-            documentation: []const []const u8,
+            attributes: ?[]const reflection.KeyValue = null,
+            documentation: ?[]const []const u8 = null,
             optional: bool = false,
             padding: u16 = 0,
             offset64: bool = false,
@@ -221,8 +221,8 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[3];
         pub const @"#constructor" = struct {
-            key: ?[]const u8,
-            value: []const u8,
+            key: []const u8,
+            value: ?[]const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -242,14 +242,14 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[4];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
-            fields: ?[]const reflection.Field,
+            name: []const u8,
+            fields: []const reflection.Field,
             is_struct: bool = false,
             minalign: i32 = 0,
             bytesize: i32 = 0,
-            attributes: []const reflection.KeyValue,
-            documentation: []const []const u8,
-            declaration_file: []const u8,
+            attributes: ?[]const reflection.KeyValue = null,
+            documentation: ?[]const []const u8 = null,
+            declaration_file: ?[]const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -296,11 +296,11 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[5];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
-            request: ?reflection.Object,
-            response: ?reflection.Object,
-            attributes: []const reflection.KeyValue,
-            documentation: []const []const u8,
+            name: []const u8,
+            request: reflection.Object,
+            response: reflection.Object,
+            attributes: ?[]const reflection.KeyValue = null,
+            documentation: ?[]const []const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -334,14 +334,14 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[6];
         pub const @"#constructor" = struct {
-            objects: ?[]const reflection.Object,
-            enums: ?[]const reflection.Enum,
-            file_ident: []const u8,
-            file_ext: []const u8,
-            root_table: reflection.Object,
-            services: []const reflection.Service,
+            objects: []const reflection.Object,
+            enums: []const reflection.Enum,
+            file_ident: ?[]const u8 = null,
+            file_ext: ?[]const u8 = null,
+            root_table: ?reflection.Object = null,
+            services: ?[]const reflection.Service = null,
             advanced_features: reflection.AdvancedFeatures = .{},
-            fbs_files: []const reflection.SchemaFile,
+            fbs_files: ?[]const reflection.SchemaFile = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -391,8 +391,8 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[7];
         pub const @"#constructor" = struct {
-            filename: ?[]const u8,
-            included_filenames: []const []const u8,
+            filename: []const u8,
+            included_filenames: ?[]const []const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,
@@ -414,11 +414,11 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[8];
         pub const @"#constructor" = struct {
-            name: ?[]const u8,
-            calls: []const reflection.RPCCall,
-            attributes: []const reflection.KeyValue,
-            documentation: []const []const u8,
-            declaration_file: []const u8,
+            name: []const u8,
+            calls: ?[]const reflection.RPCCall = null,
+            attributes: ?[]const reflection.KeyValue = null,
+            documentation: ?[]const []const u8 = null,
+            declaration_file: ?[]const u8 = null,
         };
 
         @"#ref": flatbuffers.Ref,

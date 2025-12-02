@@ -106,23 +106,27 @@ const TableConstructor = struct {
                 .int => |int| try writer.print("{s} = {d}", .{ @tagName(int), field.default_integer }),
                 .@"enum" => |enum_ref| try writer.print("{f} = @enumFromInt({d})", .{ esc(enum_ref.name), field.default_integer }),
                 .@"struct" => |struct_ref| {
-                    if (field.required)
-                        try writer.writeByte('?');
-                    try esc(struct_ref.name).format(writer);
+                    if (field.required) {
+                        try writer.print("{f}", .{esc(struct_ref.name)});
+                    } else {
+                        try writer.print("?{f} = null", .{esc(struct_ref.name)});
+                    }
                 },
                 .bit_flags => |bit_flags_ref| {
                     try writer.print("{f} = .{{}}", .{esc(bit_flags_ref.name)});
                 },
                 .table => |table_ref| {
-                    if (field.required)
-                        try writer.writeByte('?');
-                    try esc(table_ref.name).format(writer);
+                    if (field.required) {
+                        try writer.print("{f}", .{esc(table_ref.name)});
+                    } else {
+                        try writer.print("?{f} = null", .{esc(table_ref.name)});
+                    }
                 },
                 .@"union" => |union_ref| {
                     try writer.print("{f} = .NONE", .{esc(union_ref.name)});
                 },
                 .vector => |vector| {
-                    if (field.required)
+                    if (!field.required)
                         try writer.writeByte('?');
                     try writer.writeAll("[]const ");
                     switch (vector.element) {
@@ -135,11 +139,15 @@ const TableConstructor = struct {
                         .table => |table_ref| try esc(table_ref.name).format(writer),
                         .string => try writer.writeAll("[]const u8"),
                     }
+                    if (!field.required)
+                        try writer.writeAll(" = null");
                 },
                 .string => {
-                    if (field.required)
-                        try writer.writeByte('?');
-                    try writer.writeAll("[]const u8");
+                    if (field.required) {
+                        try writer.writeAll("[]const u8");
+                    } else {
+                        try writer.writeAll("?[]const u8 = null");
+                    }
                 },
             }
             try writer.writeAll(", ");

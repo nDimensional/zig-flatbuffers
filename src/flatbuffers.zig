@@ -727,3 +727,34 @@ fn validateVector(schema: *const types.Schema, vector_t: types.Vector, ref: Ref)
         },
     }
 }
+
+pub const Builder = struct {
+    allocator: std.mem.Allocator,
+    buffer: std.ArrayList(u8),
+
+    pub fn init(allocator: std.mem.Allocator) Builder {
+        return .{
+            .allocator = allocator,
+            .buffer = std.ArrayList(u8).empty,
+        };
+    }
+
+    pub fn deinit(self: *Builder) void {
+        self.buffer.deinit(self.allocator);
+    }
+
+    pub fn writeTable(self: Builder, comptime T: type, fields: T.@"#constructor") !void {
+        _ = self;
+        _ = fields;
+    }
+
+    pub fn writeVector(self: Builder, comptime T: type, items: []const T) !void {
+        _ = self;
+        _ = items;
+    }
+
+    pub fn writeString(self: Builder, value: []const u8) !void {
+        _ = self;
+        _ = value;
+    }
+};
