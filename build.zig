@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
 
     const parse = b.addExecutable(.{
         .name = "zfbs-parse",
-        .root_module = b.createModule(.{
+        .root_module = b.addModule("parse", .{
             .target = target,
             .optimize = optimize,
             .root_source_file = b.path("src/parse.zig"),
@@ -31,26 +31,26 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(parse);
     b.step("parse", "Parse a .bfbs schema into ZON IR").dependOn(&parse_run.step);
 
-    const codegen = b.addExecutable(.{
-        .name = "generate",
+    const generate = b.addExecutable(.{
+        .name = "zfbs-generate",
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-            .root_source_file = b.path("src/codegen.zig"),
+            .root_source_file = b.path("src/generate.zig"),
             .imports = &.{
                 .{ .name = "flatbuffers", .module = flatbuffers },
             },
         }),
     });
 
-    b.installArtifact(codegen);
+    b.installArtifact(generate);
 
-    const codegen_run = b.addRunArtifact(codegen);
+    const generate_run = b.addRunArtifact(generate);
     if (b.args) |args|
-        codegen_run.addArgs(args);
+        generate_run.addArgs(args);
 
-    b.installArtifact(codegen);
-    b.step("generate", "generate").dependOn(&codegen_run.step);
+    b.installArtifact(generate);
+    b.step("generate", "generate").dependOn(&generate_run.step);
 
     // example.zig
 
