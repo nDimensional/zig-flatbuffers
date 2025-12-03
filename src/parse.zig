@@ -260,6 +260,8 @@ pub const Parser = struct {
                 var struct_t = types.Struct{
                     .name = try copyName(arena_allocator, object_name),
                     .fields = fields,
+                    .bytesize = @intCast(object_ref.bytesize()),
+                    .minalign = @intCast(object_ref.minalign()),
                 };
 
                 if (object_ref.documentation()) |documentation|
@@ -602,11 +604,11 @@ pub fn main() !void {
     try stdout_writer.interface.writeByte('\n');
     try stdout_writer.interface.flush();
 
-    var builder = flatbuffers.Builder.init(allocator);
-    defer builder.deinit();
+    // var builder = flatbuffers.Builder.init(allocator);
+    // defer builder.deinit();
 
-    try builder.writeTable(reflection.Object, .{
-        .name = "wow",
-        .fields = &.{},
-    });
+    // try builder.writeTable(reflection.Object, .{
+    //     .name = "wow",
+    //     .fields = &.{},
+    // });
 }

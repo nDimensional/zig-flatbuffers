@@ -210,6 +210,8 @@ pub const Struct = struct {
 
     name: []const u8,
     fields: []const Struct.Field,
+    bytesize: u16,
+    minalign: u16,
     documentation: ?[]const []const u8 = null,
 
     pub fn getSize(self: Struct, schema: *const Schema) error{InvalidRef}!u32 {
