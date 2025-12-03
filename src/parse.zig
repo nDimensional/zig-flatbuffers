@@ -222,8 +222,12 @@ pub const Parser = struct {
                         },
                         .Array => {
                             const array = try arena_allocator.create(flatbuffers.types.Struct.Field.Array);
+                            const element_size = field_type.element_size();
+                            if (element_size > std.math.maxInt(u16))
+                                return error.InvalidArray;
+
                             array.len = field_type.fixed_length();
-                            array.element_size = field_type.element_size();
+                            array.element_size = @intCast(element_size);
                             array.element = get_element: switch (field_type.element()) {
                                 .Bool => .bool,
                                 .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
@@ -257,11 +261,19 @@ pub const Parser = struct {
                         field.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
+                const bytesize = object_ref.bytesize();
+                if (bytesize < 0 or bytesize > std.math.maxInt(u16))
+                    return error.InvalidStruct;
+
+                const minalign = object_ref.minalign();
+                if (minalign < 0 or minalign > std.math.maxInt(u16))
+                    return error.InvalidStruct;
+
                 var struct_t = types.Struct{
                     .name = try copyName(arena_allocator, object_name),
                     .fields = fields,
-                    .bytesize = @intCast(object_ref.bytesize()),
-                    .minalign = @intCast(object_ref.minalign()),
+                    .bytesize = @intCast(bytesize),
+                    .minalign = @intCast(minalign),
                 };
 
                 if (object_ref.documentation()) |documentation|
@@ -384,6 +396,7 @@ pub const Parser = struct {
                         },
                         .Vector => {
                             const element = field_type.element();
+
                             const element_type: types.Vector.Element = get_element: switch (element) {
                                 .Bool => .bool,
                                 .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => .{ .int = try getInteger(element) },
@@ -398,14 +411,21 @@ pub const Parser = struct {
                                         break :get_element .{ .table = .{ .name = element_ref_name } };
                                     }
                                 },
-                                .None, .UType, .Union, .Array, .Vector, .Vector64, .MaxBaseType => return error.InvalidTable,
+                                .None, .UType, .Union, .Array, .Vector, .Vector64, .MaxBaseType => {
+                                    return error.InvalidVectorElement;
+                                },
                             };
 
-                            // TODO: validate element_size somehow
+                            const element_size = field_type.element_size();
+                            if (element_size > std.math.maxInt(u16))
+                                return error.InvalidVectorElement;
 
                             fields[field_index] = types.Table.Field{
                                 .name = try copyName(arena_allocator, field_name),
-                                .type = .{ .vector = .{ .element = element_type } },
+                                .type = .{ .vector = .{
+                                    .element = element_type,
+                                    .element_size = @intCast(element_size),
+                                } },
                                 .deprecated = field_ref.deprecated(),
                                 .required = field_ref.required(),
                             };

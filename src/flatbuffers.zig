@@ -17,7 +17,7 @@ pub const Ref = struct {
 
     pub inline fn add(ref: Ref, offset: u32) Ref {
         var result: u64 = @intCast(ref.offset);
-        result += offset;
+        result +|= offset;
         if (result > ref.len)
             @panic("unsigned offset overflow");
         return .{ .ptr = ref.ptr, .len = ref.len, .offset = @intCast(result) };
@@ -25,7 +25,7 @@ pub const Ref = struct {
 
     pub inline fn sub(ref: Ref, offset: i32) Ref {
         var result: i64 = @intCast(ref.offset);
-        result -= offset;
+        result -|= offset;
         if (result < 0)
             @panic("signed offset underflow");
         if (result > ref.len)
@@ -685,76 +685,44 @@ fn validateVector(schema: *const types.Schema, vector_t: types.Vector, ref: Ref)
     try validateScalar(@sizeOf(u32), vec_ref);
     const vec_len = vec_ref.decodeScalar(u32);
 
-    const element_size = try vector_t.element.getSize(schema);
-    try validateScalar(@sizeOf(u32) + element_size * vec_len, vec_ref);
+    try validateScalar(@sizeOf(u32) + vector_t.element_size * vec_len, vec_ref);
 
     switch (vector_t.element) {
         .bool, .int, .float => {},
         .@"enum" => |enum_ref| {
             const field_t = try schema.getEnum(enum_ref);
             for (0..vec_len) |i| {
-                const element_ref = vec_ref.add(@sizeOf(u32) + element_size * @as(u32, @intCast(i)));
+                const element_ref = vec_ref.add(@sizeOf(u32) + vector_t.element_size * @as(u32, @intCast(i)));
                 try validateEnum(field_t, element_ref);
             }
         },
         .@"struct" => |struct_ref| {
             const struct_t = try schema.getStruct(struct_ref);
             for (0..vec_len) |i| {
-                const element_ref = vec_ref.add(@sizeOf(u32) + element_size * @as(u32, @intCast(i)));
+                const element_ref = vec_ref.add(@sizeOf(u32) + vector_t.element_size * @as(u32, @intCast(i)));
                 try validateStruct(schema, struct_t, element_ref);
             }
         },
         .bit_flags => |bit_flags_ref| {
             const field_t = try schema.getBitFlags(bit_flags_ref);
             for (0..vec_len) |i| {
-                const element_ref = vec_ref.add(@sizeOf(u32) + element_size * @as(u32, @intCast(i)));
+                const element_ref = vec_ref.add(@sizeOf(u32) + vector_t.element_size * @as(u32, @intCast(i)));
                 try validateBitFlags(field_t, element_ref);
             }
         },
         .table => |table_ref| {
             const field_t = try schema.getTable(table_ref);
             for (0..vec_len) |i| {
-                const element_ref = vec_ref.add(@sizeOf(u32) + element_size * @as(u32, @intCast(i)));
+                const element_ref = vec_ref.add(@sizeOf(u32) + vector_t.element_size * @as(u32, @intCast(i)));
                 const element_table_ref = try validateUOffset(element_ref);
                 try validateTableRef(schema, field_t, element_table_ref);
             }
         },
         .string => {
             for (0..vec_len) |i| {
-                const element_ref = vec_ref.add(@sizeOf(u32) + element_size * @as(u32, @intCast(i)));
+                const element_ref = vec_ref.add(@sizeOf(u32) + vector_t.element_size * @as(u32, @intCast(i)));
                 try validateString(element_ref);
             }
         },
     }
 }
-
-pub const Builder = struct {
-    allocator: std.mem.Allocator,
-    buffer: std.ArrayList(u8),
-
-    pub fn init(allocator: std.mem.Allocator) Builder {
-        return .{
-            .allocator = allocator,
-            .buffer = std.ArrayList(u8).empty,
-        };
-    }
-
-    pub fn deinit(self: *Builder) void {
-        self.buffer.deinit(self.allocator);
-    }
-
-    pub fn writeTable(self: Builder, comptime T: type, fields: T.@"#constructor") !void {
-        _ = self;
-        _ = fields;
-    }
-
-    pub fn writeVector(self: Builder, comptime T: type, items: []const T) !void {
-        _ = self;
-        _ = items;
-    }
-
-    pub fn writeString(self: Builder, value: []const u8) !void {
-        _ = self;
-        _ = value;
-    }
-};

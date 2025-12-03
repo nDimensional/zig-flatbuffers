@@ -8,7 +8,7 @@
             },
             .{
                 .name = "values",
-                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.EnumVal" } } } },
+                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.EnumVal" } }, .element_size = 4 } },
                 .required = true,
             },
             .{ .name = "is_union", .type = .bool },
@@ -17,10 +17,10 @@
                 .type = .{ .table = .{ .name = "reflection.Type" } },
                 .required = true,
             },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
             .{
                 .name = "documentation",
-                .type = .{ .vector = .{ .element = .string } },
+                .type = .{ .vector = .{ .element = .string, .element_size = 4 } },
                 .documentation = .{" Array of documentation comments for the enum"},
             },
             .{
@@ -44,10 +44,10 @@
             .{ .name = "union_type", .type = .{ .table = .{ .name = "reflection.Type" } } },
             .{
                 .name = "documentation",
-                .type = .{ .vector = .{ .element = .string } },
+                .type = .{ .vector = .{ .element = .string, .element_size = 4 } },
                 .documentation = .{" Array of documentation comments for the enum value"},
             },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
         } },
         .{ .name = "reflection.Field", .fields = .{
             .{
@@ -67,10 +67,10 @@
             .{ .name = "deprecated", .type = .bool },
             .{ .name = "required", .type = .bool },
             .{ .name = "key", .type = .bool },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
             .{
                 .name = "documentation",
-                .type = .{ .vector = .{ .element = .string } },
+                .type = .{ .vector = .{ .element = .string, .element_size = 4 } },
                 .documentation = .{" Array of documentation comments for the field"},
             },
             .{ .name = "optional", .type = .bool },
@@ -98,16 +98,16 @@
             },
             .{
                 .name = "fields",
-                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Field" } } } },
+                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Field" } }, .element_size = 4 } },
                 .required = true,
             },
             .{ .name = "is_struct", .type = .bool },
             .{ .name = "minalign", .type = .{ .int = .i32 } },
             .{ .name = "bytesize", .type = .{ .int = .i32 } },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
             .{
                 .name = "documentation",
-                .type = .{ .vector = .{ .element = .string } },
+                .type = .{ .vector = .{ .element = .string, .element_size = 4 } },
                 .documentation = .{" Array of documentation comments for the object"},
             },
             .{
@@ -132,28 +132,28 @@
                 .type = .{ .table = .{ .name = "reflection.Object" } },
                 .required = true,
             },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
-            .{ .name = "documentation", .type = .{ .vector = .{ .element = .string } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
+            .{ .name = "documentation", .type = .{ .vector = .{ .element = .string, .element_size = 4 } } },
         } },
         .{ .name = "reflection.Schema", .fields = .{
             .{
                 .name = "objects",
-                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Object" } } } },
+                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Object" } }, .element_size = 4 } },
                 .required = true,
             },
             .{
                 .name = "enums",
-                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Enum" } } } },
+                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Enum" } }, .element_size = 4 } },
                 .required = true,
             },
             .{ .name = "file_ident", .type = .string },
             .{ .name = "file_ext", .type = .string },
             .{ .name = "root_table", .type = .{ .table = .{ .name = "reflection.Object" } } },
-            .{ .name = "services", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Service" } } } } },
+            .{ .name = "services", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.Service" } }, .element_size = 4 } } },
             .{ .name = "advanced_features", .type = .{ .bit_flags = .{ .name = "reflection.AdvancedFeatures" } } },
             .{
                 .name = "fbs_files",
-                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.SchemaFile" } } } },
+                .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.SchemaFile" } }, .element_size = 4 } },
                 .documentation = .{ " All the files used in this compilation. Files are relative to where", " flatc was invoked." },
             },
         } },
@@ -166,7 +166,7 @@
                 .documentation = .{" Filename, relative to project root."},
             }, .{
                 .name = "included_filenames",
-                .type = .{ .vector = .{ .element = .string } },
+                .type = .{ .vector = .{ .element = .string, .element_size = 4 } },
                 .documentation = .{" Names of included files, relative to project root."},
             } },
             .documentation = .{
@@ -181,9 +181,9 @@
                 .type = .string,
                 .required = true,
             },
-            .{ .name = "calls", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.RPCCall" } } } } },
-            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } } } } },
-            .{ .name = "documentation", .type = .{ .vector = .{ .element = .string } } },
+            .{ .name = "calls", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.RPCCall" } }, .element_size = 4 } } },
+            .{ .name = "attributes", .type = .{ .vector = .{ .element = .{ .table = .{ .name = "reflection.KeyValue" } }, .element_size = 4 } } },
+            .{ .name = "documentation", .type = .{ .vector = .{ .element = .string, .element_size = 4 } } },
             .{
                 .name = "declaration_file",
                 .type = .string,

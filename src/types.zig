@@ -120,28 +120,6 @@ pub const Vector = struct {
         table: TableRef,
         string,
 
-        pub fn getSize(self: Element, schema: *const Schema) !u32 {
-            return switch (self) {
-                .bool => @sizeOf(u8),
-                .int => |int_t| int_t.getSize(),
-                .float => |float_t| float_t.getSize(),
-                .@"enum" => |enum_ref| {
-                    const enum_t = try schema.getEnum(enum_ref);
-                    return enum_t.backing_integer.getSize();
-                },
-                .@"struct" => |struct_ref| {
-                    const struct_t = try schema.getStruct(struct_ref);
-                    return try struct_t.getSize(schema);
-                },
-                .bit_flags => |bit_flags_ref| {
-                    const bit_flags_t = try schema.getBitFlags(bit_flags_ref);
-                    return bit_flags_t.backing_integer.getSize();
-                },
-                .table => @sizeOf(u32),
-                .string => @sizeOf(u32),
-            };
-        }
-
         pub fn format(self: Element, writer: *std.io.Writer) !void {
             switch (self) {
                 .bool => try writer.writeAll("bool"),
@@ -156,6 +134,7 @@ pub const Vector = struct {
         }
     };
 
+    element_size: u16,
     element: Vector.Element,
 
     pub fn format(self: Vector, writer: *std.io.Writer) !void {
@@ -167,7 +146,7 @@ pub const Struct = struct {
     pub const Field = struct {
         pub const Array = struct {
             len: u16,
-            element_size: u32,
+            element_size: u16,
             element: Struct.Field.Type,
         };
 
@@ -177,19 +156,6 @@ pub const Struct = struct {
             float: Float,
             array: *const Struct.Field.Array,
             @"struct": StructRef,
-
-            pub fn getSize(self: Type, schema: *const Schema) error{InvalidRef}!u32 {
-                return switch (self) {
-                    .bool => 1,
-                    .int => |int_t| int_t.getSize(),
-                    .float => |float_t| float_t.getSize(),
-                    .array => |array_t| array_t.len * try array_t.element.getSize(schema),
-                    .@"struct" => |struct_ref| {
-                        const struct_t = try schema.getStruct(struct_ref);
-                        return try struct_t.getSize(schema);
-                    },
-                };
-            }
 
             pub fn format(self: Type, writer: *std.io.Writer) !void {
                 switch (self) {
@@ -213,13 +179,6 @@ pub const Struct = struct {
     bytesize: u16,
     minalign: u16,
     documentation: ?[]const []const u8 = null,
-
-    pub fn getSize(self: Struct, schema: *const Schema) error{InvalidRef}!u32 {
-        var size: u32 = 0;
-        for (self.fields) |field|
-            size += try field.type.getSize(schema);
-        return size;
-    }
 
     pub fn format(self: Struct, writer: *std.io.Writer) !void {
         std.zon.stringify.serializeMaxDepth(self, .{
