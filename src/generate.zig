@@ -176,12 +176,13 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
 
     var field_id: u16 = 0;
     for (self.fields) |field| {
-        if (field.deprecated) {
-            field_id += 1;
-            if (field.type == .@"union")
-                field_id += 1;
+        defer switch (field.type) {
+            .@"union" => field_id +|= 2,
+            else => field_id +|= 1,
+        };
+
+        if (field.deprecated)
             continue;
-        }
 
         if (field.documentation) |documentation|
             for (documentation) |line|
@@ -279,12 +280,8 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
                     \\        return flatbuffers.decodeUnionField({f}, {d}, {d}, @"#self".@"#ref");
                     \\    }}
                 , .{ esc(union_t.name), esc(union_t.name), field_id, field_id + 1 });
-
-                field_id += 1;
             },
         }
-
-        field_id += 1;
 
         _ = try writer.splatByte('\n', 2);
     }

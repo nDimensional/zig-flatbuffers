@@ -194,6 +194,10 @@ pub const Parser = struct {
                     const field_ref = object_fields.get(j);
                     const field_name = field_ref.name();
                     const field_type = field_ref.type();
+                    std.log.warn(
+                        "struct {s} field {s}: offset {d}, padding: {d}, type base_size: {d}",
+                        .{ object_name, field_name, field_ref.offset(), field_ref.padding(), field_type.base_size() },
+                    );
 
                     field.* = types.Struct.Field{
                         .name = try copyName(arena_allocator, field_name),
@@ -289,7 +293,10 @@ pub const Parser = struct {
                 for (field_map, 0..) |j, field_id| {
                     const field_ref = object_fields.get(j);
                     std.debug.assert(field_id == field_ref.id());
+                    std.debug.assert(4 + 2 * field_id == field_ref.offset());
+
                     const field_type = field_ref.type();
+
                     switch (field_type.base_type()) {
                         .UType => {
                             if (field_id >= object_fields_len - 1)
@@ -320,10 +327,13 @@ pub const Parser = struct {
                 for (field_map, 0..) |j, field_id| {
                     const field_ref = object_fields.get(j);
                     std.debug.assert(field_id == field_ref.id());
+                    std.debug.assert(4 + 2 * field_id == field_ref.offset());
+
                     const field_type = field_ref.type();
                     const field_name = field_ref.name();
                     const field_base_type = field_type.base_type();
                     switch (field_base_type) {
+                        .Union => continue,
                         .UType => {
                             const enum_ref = try self.getEnum(field_type.index());
                             const union_ref_name = try copyName(arena_allocator, enum_ref.name());
@@ -450,7 +460,7 @@ pub const Parser = struct {
                                 };
                             }
                         },
-                        .Union => continue,
+
                         .Vector64 => return error.NotImplemented,
                         .None, .Array, .MaxBaseType => return error.InvalidTable,
                     }
