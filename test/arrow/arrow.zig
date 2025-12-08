@@ -2,7 +2,7 @@ const std = @import("std");
 
 const flatbuffers = @import("flatbuffers");
 
-const @"#schema": flatbuffers.types.Schema = @import("Root.zon");
+const @"#schema": flatbuffers.types.Schema = @import("arrow.zon");
 
 pub const org = struct {
     pub const apache = struct {

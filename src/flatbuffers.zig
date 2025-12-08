@@ -898,7 +898,7 @@ pub const Builder = struct {
         std.debug.assert(written == value.len);
     }
 
-    pub fn writeString(self: *Builder, value: []const u8) !i64 {
+    fn writeString(self: *Builder, value: []const u8) !i64 {
         const value_len: i64 = @intCast(value.len);
 
         self.offset = std.mem.alignBackward(i64, self.offset - value_len - 1, @sizeOf(u32));
@@ -1237,26 +1237,26 @@ pub const Builder = struct {
     }
 };
 
-test "builder" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const allocator = gpa.allocator();
+// test "builder" {
+//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+//     defer std.debug.assert(gpa.deinit() == .ok);
+//     const allocator = gpa.allocator();
 
-    var builder = try Builder.init(allocator);
-    defer builder.deinit();
+//     var builder = try Builder.init(allocator);
+//     defer builder.deinit();
 
-    const b = .{2} ** 119;
-    const b_ref = try builder.writeString(&b);
-    std.log.warn("got b_ref: {any}", .{b_ref});
+//     const b = .{2} ** 119;
+//     const b_ref = try builder.writeString(&b);
+//     std.log.warn("got b_ref: {any}", .{b_ref});
 
-    const a = .{1} ** 12;
-    const a_ref = try builder.writeString(&a);
-    std.log.warn("got a_ref: {any}", .{a_ref});
+//     const a = .{1} ** 12;
+//     const a_ref = try builder.writeString(&a);
+//     std.log.warn("got a_ref: {any}", .{a_ref});
 
-    std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
-    for (0..builder.blocks.items.len) |i| {
-        const block = builder.blocks.items[i];
-        std.log.warn("- {d} {*}", .{ i, block.ptr });
-        std.log.warn("  {x}", .{block});
-    }
-}
+//     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
+//     for (0..builder.blocks.items.len) |i| {
+//         const block = builder.blocks.items[i];
+//         std.log.warn("- {d} {*}", .{ i, block.ptr });
+//         std.log.warn("  {x}", .{block});
+//     }
+// }

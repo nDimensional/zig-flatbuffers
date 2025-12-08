@@ -4,6 +4,7 @@ const flatbuffers = @import("flatbuffers");
 const reflection = @import("reflection").reflection;
 
 const simple = @import("simple/simple.zig");
+const arrow = @import("arrow/arrow.zig").org.apache.arrow.flatbuf;
 
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {
     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
@@ -29,13 +30,10 @@ test "simple builder" {
             .height = 19,
         });
 
-        std.log.warn("ref: {any}", .{ref});
-        std.log.warn("ref: {x}", .{ref.@"#ref".ptr[ref.@"#ref".offset..ref.@"#ref".len]});
-
         try builder.writeRoot(simple.FooBar, ref);
     }
 
-    dumpBuilderState(&builder);
+    // dumpBuilderState(&builder);
 
     const result = try builder.writeAlloc(allocator);
     defer allocator.free(result);
@@ -161,7 +159,7 @@ test "reflection builder" {
         try builder.writeRoot(reflection.Field, field_ref);
     }
 
-    dumpBuilderState(&builder);
+    // dumpBuilderState(&builder);
 
     const result = try builder.writeAlloc(allocator);
     defer allocator.free(result);
@@ -646,4 +644,634 @@ test "monster builder with empty vectors" {
 
     const path = monster.path() orelse return error.Invalid;
     try std.testing.expectEqual(0, path.len());
+}
+
+test "arrow Footer with complex Schema" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    {
+        // Build Int type for an int32 field
+        const int_type = try builder.writeTable(arrow.Int, .{
+            .bitWidth = 32,
+            .is_signed = true,
+        });
+
+        // Build FloatingPoint type for a float64 field
+        const float_type = try builder.writeTable(arrow.FloatingPoint, .{
+            .precision = .DOUBLE,
+        });
+
+        // Build Utf8 type for a string field
+        const utf8_type = try builder.writeTable(arrow.Utf8, .{});
+
+        // Build Schema fields
+        const field1 = try builder.writeTable(arrow.Field, .{
+            .name = "user_id",
+            .nullable = false,
+            .type_type = .{ .Int = int_type },
+        });
+
+        const field2 = try builder.writeTable(arrow.Field, .{
+            .name = "balance",
+            .nullable = true,
+            .type_type = .{ .FloatingPoint = float_type },
+        });
+
+        const field3 = try builder.writeTable(arrow.Field, .{
+            .name = "username",
+            .nullable = true,
+            .type_type = .{ .Utf8 = utf8_type },
+        });
+
+        // Build custom metadata for schema
+        const metadata1 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "author",
+            .value = "test_suite",
+        });
+
+        const metadata2 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "created_date",
+            .value = "2025-01-01",
+        });
+
+        // Build the Schema
+        const schema = try builder.writeTable(arrow.Schema, .{
+            .endianness = .Little,
+            .fields = &.{ field1, field2, field3 },
+            .custom_metadata = &.{ metadata1, metadata2 },
+            .features = &[_]i64{@intFromEnum(arrow.Feature.COMPRESSED_BODY)},
+        });
+
+        // Build Block structs for dictionaries and record batches
+        const dict_block1 = arrow.Block{
+            .offset = 0,
+            .metaDataLength = 128,
+            .bodyLength = 1024,
+        };
+
+        const dict_block2 = arrow.Block{
+            .offset = 1152,
+            .metaDataLength = 96,
+            .bodyLength = 512,
+        };
+
+        const record_block1 = arrow.Block{
+            .offset = 1760,
+            .metaDataLength = 256,
+            .bodyLength = 4096,
+        };
+
+        const record_block2 = arrow.Block{
+            .offset = 6112,
+            .metaDataLength = 192,
+            .bodyLength = 8192,
+        };
+
+        const record_block3 = arrow.Block{
+            .offset = 14496,
+            .metaDataLength = 224,
+            .bodyLength = 16384,
+        };
+
+        // Build Footer custom metadata
+        const footer_metadata = try builder.writeTable(arrow.KeyValue, .{
+            .key = "description",
+            .value = "Sample user database export",
+        });
+
+        // Build the Footer
+        const footer = try builder.writeTable(arrow.Footer, .{
+            .version = .V5,
+            .schema = schema,
+            .dictionaries = &[_]arrow.Block{ dict_block1, dict_block2 },
+            .recordBatches = &[_]arrow.Block{ record_block1, record_block2, record_block3 },
+            .custom_metadata = &.{footer_metadata},
+        });
+
+        try builder.writeRoot(arrow.Footer, footer);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const footer = try flatbuffers.decodeRoot(arrow.Footer, result);
+
+    // Verify Footer metadata
+    try std.testing.expectEqual(arrow.MetadataVersion.V5, footer.version());
+
+    // Verify schema
+    const schema = footer.schema() orelse return error.Invalid;
+    try std.testing.expectEqual(arrow.Endianness.Little, schema.endianness());
+
+    // Verify schema fields
+    const fields = schema.fields() orelse return error.Invalid;
+    try std.testing.expectEqual(3, fields.len());
+
+    const field1 = fields.get(0);
+    const field1_name = field1.name() orelse return error.Invalid;
+    try std.testing.expectEqualSlices(u8, "user_id", field1_name);
+    try std.testing.expectEqual(false, field1.nullable());
+    const field1_type = field1.type_type();
+    switch (field1_type) {
+        .Int => |int_t| {
+            try std.testing.expectEqual(32, int_t.bitWidth());
+            try std.testing.expectEqual(true, int_t.is_signed());
+        },
+        else => return error.Invalid,
+    }
+
+    const field2 = fields.get(1);
+    const field2_name = field2.name() orelse return error.Invalid;
+    try std.testing.expectEqualSlices(u8, "balance", field2_name);
+    try std.testing.expectEqual(true, field2.nullable());
+    const field2_type = field2.type_type();
+    switch (field2_type) {
+        .FloatingPoint => |float_t| {
+            try std.testing.expectEqual(arrow.Precision.DOUBLE, float_t.precision());
+        },
+        else => return error.Invalid,
+    }
+
+    const field3 = fields.get(2);
+    const field3_name = field3.name() orelse return error.Invalid;
+    try std.testing.expectEqualSlices(u8, "username", field3_name);
+    try std.testing.expectEqual(true, field3.nullable());
+    const field3_type = field3.type_type();
+    switch (field3_type) {
+        .Utf8 => {},
+        else => return error.Invalid,
+    }
+
+    // Verify schema custom metadata
+    const schema_metadata = schema.custom_metadata() orelse return error.Invalid;
+    try std.testing.expectEqual(2, schema_metadata.len());
+    const md1 = schema_metadata.get(0);
+    try std.testing.expectEqualSlices(u8, "author", md1.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "test_suite", md1.value() orelse return error.Invalid);
+    const md2 = schema_metadata.get(1);
+    try std.testing.expectEqualSlices(u8, "created_date", md2.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "2025-01-01", md2.value() orelse return error.Invalid);
+
+    // Verify schema features
+    const features = schema.features() orelse return error.Invalid;
+    try std.testing.expectEqual(1, features.len());
+    try std.testing.expectEqual(@as(i64, @intFromEnum(arrow.Feature.COMPRESSED_BODY)), features.get(0));
+
+    // Verify dictionaries
+    const dictionaries = footer.dictionaries() orelse return error.Invalid;
+    try std.testing.expectEqual(2, dictionaries.len());
+    const dict1 = dictionaries.get(0);
+    try std.testing.expectEqual(0, dict1.offset);
+    try std.testing.expectEqual(128, dict1.metaDataLength);
+    try std.testing.expectEqual(1024, dict1.bodyLength);
+    const dict2 = dictionaries.get(1);
+    try std.testing.expectEqual(1152, dict2.offset);
+    try std.testing.expectEqual(96, dict2.metaDataLength);
+    try std.testing.expectEqual(512, dict2.bodyLength);
+
+    // Verify record batches
+    const record_batches = footer.recordBatches() orelse return error.Invalid;
+    try std.testing.expectEqual(3, record_batches.len());
+    const rec1 = record_batches.get(0);
+    try std.testing.expectEqual(1760, rec1.offset);
+    try std.testing.expectEqual(256, rec1.metaDataLength);
+    try std.testing.expectEqual(4096, rec1.bodyLength);
+    const rec2 = record_batches.get(1);
+    try std.testing.expectEqual(6112, rec2.offset);
+    try std.testing.expectEqual(192, rec2.metaDataLength);
+    try std.testing.expectEqual(8192, rec2.bodyLength);
+    const rec3 = record_batches.get(2);
+    try std.testing.expectEqual(14496, rec3.offset);
+    try std.testing.expectEqual(224, rec3.metaDataLength);
+    try std.testing.expectEqual(16384, rec3.bodyLength);
+
+    // Verify footer custom metadata
+    const footer_metadata = footer.custom_metadata() orelse return error.Invalid;
+    try std.testing.expectEqual(1, footer_metadata.len());
+    const fmd = footer_metadata.get(0);
+    try std.testing.expectEqualSlices(u8, "description", fmd.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "Sample user database export", fmd.value() orelse return error.Invalid);
+}
+
+test "arrow Message with RecordBatch" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    {
+        // Build FieldNode structs
+        const field_node1 = arrow.FieldNode{
+            .length = 1000,
+            .null_count = 0,
+        };
+
+        const field_node2 = arrow.FieldNode{
+            .length = 1000,
+            .null_count = 42,
+        };
+
+        const field_node3 = arrow.FieldNode{
+            .length = 1000,
+            .null_count = 15,
+        };
+
+        // Build Buffer structs
+        const buffer1 = arrow.Buffer{ .offset = 0, .length = 128 };
+        const buffer2 = arrow.Buffer{ .offset = 128, .length = 4000 };
+        const buffer3 = arrow.Buffer{ .offset = 4128, .length = 128 };
+        const buffer4 = arrow.Buffer{ .offset = 4256, .length = 8000 };
+        const buffer5 = arrow.Buffer{ .offset = 12256, .length = 128 };
+        const buffer6 = arrow.Buffer{ .offset = 12384, .length = 12000 };
+
+        // Build BodyCompression
+        const compression = try builder.writeTable(arrow.BodyCompression, .{
+            .codec = .ZSTD,
+            .method = .BUFFER,
+        });
+
+        // Build RecordBatch
+        const record_batch = try builder.writeTable(arrow.RecordBatch, .{
+            .length = 1000,
+            .nodes = &[_]arrow.FieldNode{ field_node1, field_node2, field_node3 },
+            .buffers = &[_]arrow.Buffer{ buffer1, buffer2, buffer3, buffer4, buffer5, buffer6 },
+            .compression = compression,
+        });
+
+        // Build custom metadata for message
+        const metadata = try builder.writeTable(arrow.KeyValue, .{
+            .key = "batch_id",
+            .value = "batch_00042",
+        });
+
+        // Build Message with RecordBatch header
+        const message = try builder.writeTable(arrow.Message, .{
+            .version = .V5,
+            .header_type = .{ .RecordBatch = record_batch },
+            .bodyLength = 24384,
+            .custom_metadata = &.{metadata},
+        });
+
+        try builder.writeRoot(arrow.Message, message);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const message = try flatbuffers.decodeRoot(arrow.Message, result);
+
+    // Verify Message metadata
+    try std.testing.expectEqual(arrow.MetadataVersion.V5, message.version());
+    try std.testing.expectEqual(24384, message.bodyLength());
+
+    // Verify custom metadata
+    const metadata = message.custom_metadata() orelse return error.Invalid;
+    try std.testing.expectEqual(1, metadata.len());
+    const md = metadata.get(0);
+    try std.testing.expectEqualSlices(u8, "batch_id", md.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "batch_00042", md.value() orelse return error.Invalid);
+
+    // Verify header is RecordBatch
+    const header = message.header_type();
+    switch (header) {
+        .RecordBatch => |batch| {
+            try std.testing.expectEqual(1000, batch.length());
+
+            // Verify nodes
+            const nodes = batch.nodes() orelse return error.Invalid;
+            try std.testing.expectEqual(3, nodes.len());
+            const n1 = nodes.get(0);
+            try std.testing.expectEqual(1000, n1.length);
+            try std.testing.expectEqual(0, n1.null_count);
+            const n2 = nodes.get(1);
+            try std.testing.expectEqual(1000, n2.length);
+            try std.testing.expectEqual(42, n2.null_count);
+            const n3 = nodes.get(2);
+            try std.testing.expectEqual(1000, n3.length);
+            try std.testing.expectEqual(15, n3.null_count);
+
+            // Verify buffers
+            const buffers = batch.buffers() orelse return error.Invalid;
+            try std.testing.expectEqual(6, buffers.len());
+            const b1 = buffers.get(0);
+            try std.testing.expectEqual(0, b1.offset);
+            try std.testing.expectEqual(128, b1.length);
+            const b2 = buffers.get(1);
+            try std.testing.expectEqual(128, b2.offset);
+            try std.testing.expectEqual(4000, b2.length);
+            const b3 = buffers.get(2);
+            try std.testing.expectEqual(4128, b3.offset);
+            const b6 = buffers.get(5);
+            try std.testing.expectEqual(12384, b6.offset);
+            try std.testing.expectEqual(12000, b6.length);
+
+            // Verify compression
+            const comp = batch.compression() orelse return error.Invalid;
+            try std.testing.expectEqual(arrow.CompressionType.ZSTD, comp.codec());
+            try std.testing.expectEqual(arrow.BodyCompressionMethod.BUFFER, comp.method());
+        },
+        else => return error.Invalid,
+    }
+}
+
+test "arrow Message with Tensor" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    {
+        // Build Int type for tensor elements (int32)
+        const int_type = try builder.writeTable(arrow.Int, .{
+            .bitWidth = 32,
+            .is_signed = true,
+        });
+
+        // Build TensorDim structs for a 3D tensor (2x3x4)
+        const dim1 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 2,
+            .name = "batch",
+        });
+
+        const dim2 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 3,
+            .name = "height",
+        });
+
+        const dim3 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 4,
+            .name = "width",
+        });
+
+        // Build strides (row-major: [48, 16, 4] bytes)
+        const strides = &[_]i64{ 48, 16, 4 };
+
+        // Build tensor data buffer
+        const data_buffer = arrow.Buffer{
+            .offset = 0,
+            .length = 96, // 2 * 3 * 4 * 4 bytes
+        };
+
+        // Build Tensor
+        const tensor = try builder.writeTable(arrow.Tensor, .{
+            .type_type = .{ .Int = int_type },
+            .shape = &.{ dim1, dim2, dim3 },
+            .strides = strides,
+            .data = data_buffer,
+        });
+
+        // Build custom metadata
+        const metadata1 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "model_name",
+            .value = "neural_net_weights",
+        });
+
+        const metadata2 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "layer",
+            .value = "conv1",
+        });
+
+        // Build Message with Tensor header
+        const message = try builder.writeTable(arrow.Message, .{
+            .version = .V5,
+            .header_type = .{ .Tensor = tensor },
+            .bodyLength = 96,
+            .custom_metadata = &.{ metadata1, metadata2 },
+        });
+
+        try builder.writeRoot(arrow.Message, message);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const message = try flatbuffers.decodeRoot(arrow.Message, result);
+
+    // Verify Message metadata
+    try std.testing.expectEqual(arrow.MetadataVersion.V5, message.version());
+    try std.testing.expectEqual(96, message.bodyLength());
+
+    // Verify custom metadata
+    const metadata = message.custom_metadata() orelse return error.Invalid;
+    try std.testing.expectEqual(2, metadata.len());
+    const md1 = metadata.get(0);
+    try std.testing.expectEqualSlices(u8, "model_name", md1.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "neural_net_weights", md1.value() orelse return error.Invalid);
+    const md2 = metadata.get(1);
+    try std.testing.expectEqualSlices(u8, "layer", md2.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "conv1", md2.value() orelse return error.Invalid);
+
+    // Verify header is Tensor
+    const header = message.header_type();
+    switch (header) {
+        .Tensor => |tensor| {
+            // Verify tensor type
+            const tensor_type = tensor.type_type();
+            switch (tensor_type) {
+                .Int => |int_t| {
+                    try std.testing.expectEqual(32, int_t.bitWidth());
+                    try std.testing.expectEqual(true, int_t.is_signed());
+                },
+                else => return error.Invalid,
+            }
+
+            // Verify shape
+            const shape = tensor.shape();
+            try std.testing.expectEqual(3, shape.len());
+            const d1 = shape.get(0);
+            try std.testing.expectEqual(2, d1.size());
+            try std.testing.expectEqualSlices(u8, "batch", d1.name() orelse return error.Invalid);
+            const d2 = shape.get(1);
+            try std.testing.expectEqual(3, d2.size());
+            try std.testing.expectEqualSlices(u8, "height", d2.name() orelse return error.Invalid);
+            const d3 = shape.get(2);
+            try std.testing.expectEqual(4, d3.size());
+            try std.testing.expectEqualSlices(u8, "width", d3.name() orelse return error.Invalid);
+
+            // Verify strides
+            const strides = tensor.strides() orelse return error.Invalid;
+            try std.testing.expectEqual(3, strides.len());
+            try std.testing.expectEqual(48, strides.get(0));
+            try std.testing.expectEqual(16, strides.get(1));
+            try std.testing.expectEqual(4, strides.get(2));
+
+            // Verify data buffer
+            const data = tensor.data();
+            try std.testing.expectEqual(0, data.offset);
+            try std.testing.expectEqual(96, data.length);
+        },
+        else => return error.Invalid,
+    }
+}
+
+test "arrow Message with SparseTensor" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    {
+        // Build FloatingPoint type for sparse tensor elements (float64)
+        const float_type = try builder.writeTable(arrow.FloatingPoint, .{
+            .precision = .DOUBLE,
+        });
+
+        // Build TensorDim structs for a 3D sparse tensor (100x200x150)
+        const dim1 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 100,
+            .name = "x",
+        });
+
+        const dim2 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 200,
+            .name = "y",
+        });
+
+        const dim3 = try builder.writeTable(arrow.TensorDim, .{
+            .size = 150,
+            .name = "z",
+        });
+
+        // Build Int type for COO indices (int64)
+        const indices_int_type = try builder.writeTable(arrow.Int, .{
+            .bitWidth = 64,
+            .is_signed = true,
+        });
+
+        // Build COO index buffers
+        const indices_buffer = arrow.Buffer{
+            .offset = 0,
+            .length = 384, // 16 non-zero values * 3 dimensions * 8 bytes
+        };
+
+        // Build SparseTensorIndexCOO
+        const coo_index = try builder.writeTable(arrow.SparseTensorIndexCOO, .{
+            .indicesType = indices_int_type,
+            .indicesBuffer = indices_buffer,
+            .isCanonical = true,
+        });
+
+        // Build sparse tensor data buffer (16 non-zero float64 values)
+        const data_buffer = arrow.Buffer{
+            .offset = 384,
+            .length = 128, // 16 * 8 bytes
+        };
+
+        // Build SparseTensor
+        const sparse_tensor = try builder.writeTable(arrow.SparseTensor, .{
+            .type_type = .{ .FloatingPoint = float_type },
+            .shape = &.{ dim1, dim2, dim3 },
+            .non_zero_length = 16,
+            .sparseIndex_type = .{ .SparseTensorIndexCOO = coo_index },
+            .data = data_buffer,
+        });
+
+        // Build custom metadata
+        const metadata1 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "matrix_type",
+            .value = "adjacency_sparse",
+        });
+
+        const metadata2 = try builder.writeTable(arrow.KeyValue, .{
+            .key = "sparsity",
+            .value = "0.9995", // 16 / (100 * 200 * 150) ≈ 0.00053
+        });
+
+        // Build Message with SparseTensor header
+        const message = try builder.writeTable(arrow.Message, .{
+            .version = .V5,
+            .header_type = .{ .SparseTensor = sparse_tensor },
+            .bodyLength = 512,
+            .custom_metadata = &.{ metadata1, metadata2 },
+        });
+
+        try builder.writeRoot(arrow.Message, message);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const message = try flatbuffers.decodeRoot(arrow.Message, result);
+
+    // Verify Message metadata
+    try std.testing.expectEqual(arrow.MetadataVersion.V5, message.version());
+    try std.testing.expectEqual(512, message.bodyLength());
+
+    // Verify custom metadata
+    const metadata = message.custom_metadata() orelse return error.Invalid;
+    try std.testing.expectEqual(2, metadata.len());
+    const md1 = metadata.get(0);
+    try std.testing.expectEqualSlices(u8, "matrix_type", md1.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "adjacency_sparse", md1.value() orelse return error.Invalid);
+    const md2 = metadata.get(1);
+    try std.testing.expectEqualSlices(u8, "sparsity", md2.key() orelse return error.Invalid);
+    try std.testing.expectEqualSlices(u8, "0.9995", md2.value() orelse return error.Invalid);
+
+    // Verify header is SparseTensor
+    const header = message.header_type();
+    switch (header) {
+        .SparseTensor => |sparse_tensor| {
+            // Verify sparse tensor type
+            const tensor_type = sparse_tensor.type_type();
+            switch (tensor_type) {
+                .FloatingPoint => |float_t| {
+                    try std.testing.expectEqual(arrow.Precision.DOUBLE, float_t.precision());
+                },
+                else => return error.Invalid,
+            }
+
+            // Verify shape
+            const shape = sparse_tensor.shape();
+            try std.testing.expectEqual(3, shape.len());
+            const d1 = shape.get(0);
+            try std.testing.expectEqual(100, d1.size());
+            try std.testing.expectEqualSlices(u8, "x", d1.name() orelse return error.Invalid);
+            const d2 = shape.get(1);
+            try std.testing.expectEqual(200, d2.size());
+            try std.testing.expectEqualSlices(u8, "y", d2.name() orelse return error.Invalid);
+            const d3 = shape.get(2);
+            try std.testing.expectEqual(150, d3.size());
+            try std.testing.expectEqualSlices(u8, "z", d3.name() orelse return error.Invalid);
+
+            // Verify non-zero length
+            try std.testing.expectEqual(16, sparse_tensor.non_zero_length());
+
+            // Verify sparse index is COO
+            const sparse_index = sparse_tensor.sparseIndex_type();
+            switch (sparse_index) {
+                .SparseTensorIndexCOO => |coo| {
+                    // Verify indices type
+                    const indices_type = coo.indicesType();
+                    try std.testing.expectEqual(64, indices_type.bitWidth());
+                    try std.testing.expectEqual(true, indices_type.is_signed());
+
+                    // Verify indices buffer
+                    const indices_buffer = coo.indicesBuffer();
+                    try std.testing.expectEqual(0, indices_buffer.offset);
+                    try std.testing.expectEqual(384, indices_buffer.length);
+
+                    // Verify canonical flag
+                    try std.testing.expectEqual(true, coo.isCanonical());
+                },
+                else => return error.Invalid,
+            }
+
+            // Verify data buffer
+            const data = sparse_tensor.data();
+            try std.testing.expectEqual(384, data.offset);
+            try std.testing.expectEqual(128, data.length);
+        },
+        else => return error.Invalid,
+    }
 }
