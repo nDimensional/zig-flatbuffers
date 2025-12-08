@@ -403,18 +403,25 @@ pub const Parser = struct {
                         .Vector => {
                             const element = field_type.element();
 
-                            const element_type: types.Vector.Element = get_element: switch (element) {
-                                .Bool => .bool,
-                                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => .{ .int = try getInteger(element) },
-                                .Float, .Double => .{ .float = try getFloat(element) },
-                                .String => .string,
+                            const element_type: types.Vector.Element, const minalign: u16 = get_element: switch (element) {
+                                .Bool => .{ .bool, @sizeOf(bool) },
+                                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
+                                    const int = try getInteger(element);
+                                    break :get_element .{ .{ .int = int }, int.getSize() };
+                                },
+                                .Float, .Double => {
+                                    const float = try getFloat(element);
+                                    break :get_element .{ .{ .float = float }, float.getSize() };
+                                },
+                                .String => .{ .string, @sizeOf(u32) },
                                 .Obj => {
                                     const element_object = try self.getObject(field_type.index());
                                     const element_ref_name = try copyName(arena_allocator, element_object.name());
                                     if (element_object.is_struct()) {
-                                        break :get_element .{ .@"struct" = .{ .name = element_ref_name } };
+                                        const alignment: u16 = @intCast(element_object.minalign());
+                                        break :get_element .{ .{ .@"struct" = .{ .name = element_ref_name } }, alignment };
                                     } else {
-                                        break :get_element .{ .table = .{ .name = element_ref_name } };
+                                        break :get_element .{ .{ .table = .{ .name = element_ref_name } }, @sizeOf(u32) };
                                     }
                                 },
                                 .None, .UType, .Union, .Array, .Vector, .Vector64, .MaxBaseType => {
@@ -431,6 +438,7 @@ pub const Parser = struct {
                                 .type = .{ .vector = .{
                                     .element = element_type,
                                     .element_size = @intCast(element_size),
+                                    .minalign = @max(minalign, @sizeOf(u32)),
                                 } },
                                 .deprecated = field_ref.deprecated(),
                                 .required = field_ref.required(),

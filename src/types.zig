@@ -136,6 +136,7 @@ pub const Vector = struct {
 
     element_size: u16,
     element: Vector.Element,
+    minalign: u16,
 
     pub fn format(self: Vector, writer: *std.io.Writer) !void {
         try writer.print("Vector({f})", .{self.element});

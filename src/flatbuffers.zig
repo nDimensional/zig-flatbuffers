@@ -741,7 +741,7 @@ fn writeScalar(comptime T: type, slot: *[@sizeOf(T)]u8, value: T) void {
 
 fn writeStruct(comptime S: type, slot: []u8, value: S) void {
     const struct_t: *const types.Struct = @field(S, "#type");
-    for (struct_t.fields) |field| {
+    inline for (struct_t.fields) |field| {
         const F = @FieldType(S, field.name);
         const field_value: F = @field(value, field.name);
         const field_slot = slot[field.offset..];
@@ -757,7 +757,7 @@ pub fn getBitFlagsValue(comptime T: type, flags: T) u64 {
     const bit_flags_t: *const types.BitFlags = @field(T, "#type");
 
     var value: u64 = 0;
-    for (bit_flags_t.fields) |flag| {
+    inline for (bit_flags_t.fields) |flag| {
         if (@field(flags, flag.name)) {
             value |= flag.value;
         }
@@ -776,6 +776,7 @@ pub const Builder = struct {
     vtable: std.ArrayList(i64),
     field_refs: std.ArrayList(i64),
     vector_refs: std.ArrayList(i64),
+    struct_buffer: std.ArrayList(u8),
 
     pub fn init(allocator: std.mem.Allocator) !Builder {
         var blocks = std.ArrayList([]align(8) u8).empty;
@@ -793,6 +794,7 @@ pub const Builder = struct {
             .vtable = std.ArrayList(i64).empty,
             .field_refs = std.ArrayList(i64).empty,
             .vector_refs = std.ArrayList(i64).empty,
+            .struct_buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -803,6 +805,7 @@ pub const Builder = struct {
         self.vtable.deinit(self.allocator);
         self.field_refs.deinit(self.allocator);
         self.vector_refs.deinit(self.allocator);
+        self.struct_buffer.deinit(self.allocator);
         self.offset = 0;
     }
 
@@ -813,13 +816,13 @@ pub const Builder = struct {
     fn alloc(
         self: *Builder,
         comptime size: u32,
-        comptime min_alignment: u32,
-    ) !*align(@max(size, min_alignment)) [size]u8 {
+        comptime alignment: u32,
+    ) !*align(alignment) [size]u8 {
         comptime {
             if (size > Builder.block_size) @compileError("alloc size too large");
         }
 
-        self.offset = std.mem.alignBackward(i64, self.offset, @max(min_alignment, size));
+        self.offset = std.mem.alignBackward(i64, self.offset, alignment);
         self.offset -= size;
 
         var head_offset = self.capacity() + self.offset;
@@ -871,7 +874,7 @@ pub const Builder = struct {
         return @intCast(soffset - self.offset);
     }
 
-    fn copyString(self: *Builder, value: []const u8, offset: i64) !void {
+    fn writeBytes(self: *Builder, value: []const u8, offset: i64) !void {
         const total_size = self.capacity();
         var written: usize = 0;
 
@@ -879,7 +882,7 @@ pub const Builder = struct {
 
         const offset_end = offset_start + value.len;
         const block_index_start = try std.math.divFloor(usize, offset_start, block_size);
-        const block_index_end = try std.math.divCeil(usize, offset_end - 1, block_size);
+        const block_index_end = try std.math.divCeil(usize, offset_end, block_size);
 
         for (block_index_start..block_index_end) |block_index| {
             const block = self.blocks.items[block_index];
@@ -893,18 +896,12 @@ pub const Builder = struct {
         }
 
         std.debug.assert(written == value.len);
-
-        const sentinel_block_index = try std.math.divFloor(usize, offset_end, block_size);
-        const sentinel_block = self.blocks.items[sentinel_block_index];
-        const sentinel_block_start = sentinel_block_index * block_size;
-        const sentinel_offset = offset_end - sentinel_block_start;
-        sentinel_block[sentinel_offset] = 0;
     }
 
     pub fn writeString(self: *Builder, value: []const u8) !i64 {
-        const total_len: i64 = @intCast(value.len + 1);
+        const value_len: i64 = @intCast(value.len);
 
-        self.offset = std.mem.alignBackward(i64, self.offset - total_len, @sizeOf(u32));
+        self.offset = std.mem.alignBackward(i64, self.offset - value_len - 1, @sizeOf(u32));
         self.offset -= @sizeOf(u32);
 
         while (self.capacity() + self.offset < 0)
@@ -913,33 +910,9 @@ pub const Builder = struct {
         const head_start: usize = @intCast(self.capacity() + self.offset);
         writeScalar(u32, self.blocks.items[0][head_start..][0..@sizeOf(u32)], @truncate(value.len));
 
-        const total_size = self.capacity();
-
-        const offset_start: usize = @intCast(total_size + self.offset + @sizeOf(u32));
-
-        const offset_end = offset_start + value.len;
-        const block_index_start = try std.math.divFloor(usize, offset_start, block_size);
-        const block_index_end = try std.math.divCeil(usize, offset_end - 1, block_size);
-
-        var written: usize = 0;
-        for (block_index_start..block_index_end) |block_index| {
-            const block = self.blocks.items[block_index];
-            const block_start = block_index * block_size;
-            const chunk_start = @mod(@max(offset_start, block_start), block_size);
-            const chunk_end = @min(block_size, offset_end - block_start);
-            const chunk_len = chunk_end - chunk_start;
-
-            @memcpy(block[chunk_start..chunk_end], value[written .. written + chunk_len]);
-            written += chunk_len;
-        }
-
-        std.debug.assert(written == value.len);
-
-        const sentinel_block_index = try std.math.divFloor(usize, offset_end, block_size);
-        const sentinel_block = self.blocks.items[sentinel_block_index];
-        const sentinel_block_start = sentinel_block_index * block_size;
-        const sentinel_offset = offset_end - sentinel_block_start;
-        sentinel_block[sentinel_offset] = 0;
+        const value_offset = self.offset + @sizeOf(u32);
+        try self.writeBytes(value, value_offset);
+        try self.writeBytes(&.{0}, value_offset + value_len);
 
         return self.offset;
     }
@@ -965,19 +938,46 @@ pub const Builder = struct {
         };
     }
 
+    fn getUnionRef(comptime T: type, value: T) ?struct { tag: u8, ref: Ref } {
+        const fields = switch (@typeInfo(T)) {
+            .@"union" => |info| info.fields,
+            else => @compileError("expected union type"),
+        };
+
+        if (value == .NONE)
+            return null;
+
+        inline for (fields[1..], 1..) |field, tag| {
+            if (std.mem.eql(u8, field.name, @tagName(value))) {
+                const active_field = @field(value, field.name);
+                return .{ .tag = tag, .ref = @field(active_field, "#ref") };
+            }
+        }
+
+        return null;
+    }
+
     pub fn writeTable(self: *Builder, comptime T: type, fields: @field(T, "#constructor")) !T {
         if (@field(T, "#kind") != Kind.Table)
             @compileError("invalid table type");
 
         const t: *const types.Table = @field(T, "#type");
 
-        // The very first thing we need to do is iterate over the fields,
+        var field_id: u16 = 0;
+        for (t.fields) |field| {
+            switch (field.type) {
+                .@"union" => field_id += 2,
+                else => field_id += 1,
+            }
+        }
+
+        // The first thing we need to do is iterate over the fields,
         // write out any string and vector values, and save refs to them.
-        try self.field_refs.resize(self.allocator, t.fields.len);
+        try self.field_refs.resize(self.allocator, field_id);
         defer self.field_refs.clearRetainingCapacity();
         @memset(self.field_refs.items, 0);
 
-        var field_id: u16 = 0;
+        field_id = 0;
         inline for (t.fields) |field| {
             defer switch (field.type) {
                 .@"union" => field_id += 2,
@@ -990,24 +990,50 @@ pub const Builder = struct {
                         self.field_refs.items[field_id] = try self.writeString(value);
                     },
                     .vector => |vector_t| if (wrap(@field(fields, field.name))) |value| {
-                        const alignment = @max(vector_t.element_size, @sizeOf(u32));
+                        const vector_len: u32 = @truncate(vector_t.element_size * value.len);
 
                         switch (vector_t.element) {
                             .bool, .int, .float, .@"enum" => {
-                                for (0..value.len) |i| {
-                                    const j = value.len - i - 1;
-                                    const item = value[j];
-                                    const item_slot = try self.alloc(vector_t.element_size, alignment);
-                                    writeScalar(@TypeOf(item), item_slot, item);
+                                self.offset = std.mem.alignBackward(i64, self.offset - vector_len, vector_t.minalign);
+                                while (self.capacity() + self.offset < 0)
+                                    try self.prepend();
+
+                                const vector_start: usize = @intCast(@mod(self.offset, self.capacity()));
+                                for (value, 0..) |item, i| {
+                                    const item_offset = vector_start + i * vector_t.element_size;
+                                    const block_index = @divFloor(item_offset, block_size);
+                                    const block_offset = @mod(item_offset, block_size);
+                                    const slot = self.blocks.items[block_index][block_offset..][0..vector_t.element_size];
+                                    writeScalar(@TypeOf(item), slot, item);
                                 }
+
+                                // for (0..value.len) |i| {
+                                //     const j = value.len - i - 1;
+                                //     const item = value[j];
+                                //     const item_slot = try self.alloc(vector_t.element_size, vector_t.element_size);
+                                //     writeScalar(@TypeOf(item), item_slot, item);
+                                // }
                             },
                             .@"struct" => {
-                                for (0..value.len) |i| {
-                                    const j = value.len - i - 1;
-                                    const item = value[j];
-                                    const item_slot = try self.alloc(vector_t.element_size, alignment);
-                                    writeStruct(@TypeOf(item), item_slot, item);
+                                try self.struct_buffer.resize(self.allocator, vector_t.element_size);
+                                defer self.struct_buffer.clearRetainingCapacity();
+
+                                self.offset = std.mem.alignBackward(i64, self.offset - vector_len, vector_t.minalign);
+                                while (self.capacity() + self.offset < 0)
+                                    try self.prepend();
+
+                                for (value, 0..) |item, i| {
+                                    writeStruct(@TypeOf(item), self.struct_buffer.items, item);
+                                    const item_offset = self.offset + @as(i64, @intCast(vector_t.element_size * i));
+                                    try self.writeBytes(self.struct_buffer.items, item_offset);
                                 }
+
+                                // for (0..value.len) |i| {
+                                //     const j = value.len - i - 1;
+                                //     const item = value[j];
+                                //     const item_slot = try self.alloc(vector_t.element_size, alignment);
+                                //     writeStruct(@TypeOf(item), item_slot, item);
+                                // }
                             },
                             .bit_flags => @compileError("not implemented"),
                             .string => {
@@ -1018,7 +1044,7 @@ pub const Builder = struct {
 
                                 for (0..value.len) |i| {
                                     const j = value.len - i - 1;
-                                    const item_slot = try self.alloc(@sizeOf(u32), alignment);
+                                    const item_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
                                     const ref = self.vector_refs.items[j];
                                     writeScalar(u32, item_slot, @intCast(ref - self.offset));
                                 }
@@ -1027,16 +1053,16 @@ pub const Builder = struct {
                                 for (0..value.len) |i| {
                                     const j = value.len - i - 1;
                                     const item = value[j];
-                                    const item_slot = try self.alloc(@sizeOf(u32), alignment);
+                                    const item_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
                                     const ref: Ref = @field(item, "#ref");
                                     writeScalar(u32, item_slot, self.getUOffset(ref));
                                 }
                             },
                         }
 
+                        std.debug.assert(@mod(self.offset, @sizeOf(u32)) == 0);
                         const len_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
                         writeScalar(u32, len_slot, @truncate(value.len));
-
                         self.field_refs.items[field_id] = self.offset;
                     },
                     else => {},
@@ -1071,9 +1097,21 @@ pub const Builder = struct {
                         if (wrap(@field(fields, field.name))) |field_value| {
                             const struct_t: *const types.Struct = @field(F, "#type");
 
-                            // TODO: incremental struct writing
-                            const slot = try self.alloc(struct_t.bytesize, struct_t.minalign);
-                            writeStruct(F, slot, field_value);
+                            try self.struct_buffer.resize(self.allocator, struct_t.bytesize);
+                            defer self.struct_buffer.clearRetainingCapacity();
+
+                            writeStruct(F, self.struct_buffer.items, field_value);
+
+                            self.offset = std.mem.alignBackward(i64, self.offset - struct_t.bytesize, struct_t.minalign);
+                            while (self.capacity() + self.offset < 0)
+                                try self.prepend();
+
+                            try self.writeBytes(self.struct_buffer.items, self.offset);
+
+                            // // TODO: incremental struct writing
+                            // const slot = try self.alloc(struct_t.bytesize, struct_t.minalign);
+                            // writeStruct(F, slot, field_value);
+
                             self.vtable.items[field_id] = self.offset;
                         }
                     },
@@ -1082,7 +1120,7 @@ pub const Builder = struct {
                             @compileError("invalid bit flags type");
 
                         const bit_flags_t: *const types.BitFlags = @field(F, "#type");
-                        const size = bit_flags_t.backing_integer.getSize();
+                        const size = comptime bit_flags_t.backing_integer.getSize();
 
                         const field_value: F = @field(fields, field.name);
                         const flags = getBitFlagsValue(F, field_value);
@@ -1115,14 +1153,13 @@ pub const Builder = struct {
                     },
                     .@"union" => {
                         const field_value: F = @field(fields, field.name);
-                        if (field_value != @as(F, @enumFromInt(0))) {
+                        if (getUnionRef(F, field_value)) |entry| {
                             const tag_slot = try self.alloc(1, 1);
-                            tag_slot[0] = @intFromEnum(field_value);
+                            tag_slot[0] = entry.tag;
                             self.vtable.items[field_id] = self.offset;
 
                             const ref_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
-                            const ref: Ref = @field(@field(field_value, @tagName(field_value)), "#ref");
-                            std.mem.writeInt(u32, ref_slot, self.getUOffset(ref), .little);
+                            std.mem.writeInt(u32, ref_slot, self.getUOffset(entry.ref), .little);
                             self.vtable.items[field_id + 1] = self.offset;
                         }
                     },
