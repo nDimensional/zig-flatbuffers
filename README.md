@@ -1,6 +1,6 @@
 # zig-flatbuffers
 
-**WIP.** Currently only supports decoding.
+Efficient FlatBuffers decoders and encoders for Zig, in Zig.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-This project implements a code generator for efficient FlatBuffers decoders for Zig, in Zig.
+This project implements a code generator that takes a Flatbuffers schema and emits a Zig source file with native Zig types modeling the tables in the schema, as well as a runtime library exporting generic methods for encoding and decoding Flatbuffers data given one of the generated types.
 
 ```
               ┌──────────────────┐
