@@ -1,0 +1,76 @@
+.{
+    .tables = .{ .{ .name = "MyGame.Sample.Monster", .fields = .{
+        .{ .name = "pos", .type = .{ .@"struct" = .{ .name = "MyGame.Sample.Vec3" } } },
+        .{
+            .name = "mana",
+            .type = .{ .int = .i16 },
+            .default_integer = 150,
+        },
+        .{
+            .name = "hp",
+            .type = .{ .int = .i16 },
+            .default_integer = 100,
+        },
+        .{ .name = "name", .type = .string },
+        .{
+            .name = "friendly",
+            .type = .bool,
+            .deprecated = true,
+        },
+        .{ .name = "inventory", .type = .{ .vector = .{
+            .element_size = 1,
+            .element = .{ .int = .u8 },
+            .minalign = 4,
+        } } },
+        .{
+            .name = "color",
+            .type = .{ .@"enum" = .{ .name = "MyGame.Sample.Color" } },
+            .default_integer = 2,
+        },
+        .{ .name = "weapons", .type = .{ .vector = .{
+            .element_size = 4,
+            .element = .{ .table = .{ .name = "MyGame.Sample.Weapon" } },
+            .minalign = 4,
+        } } },
+        .{ .name = "equipped_type", .type = .{ .@"union" = .{ .name = "MyGame.Sample.Equipment" } } },
+        .{ .name = "path", .type = .{ .vector = .{
+            .element_size = 12,
+            .element = .{ .@"struct" = .{ .name = "MyGame.Sample.Vec3" } },
+            .minalign = 4,
+        } } },
+    } }, .{ .name = "MyGame.Sample.Weapon", .fields = .{ .{ .name = "name", .type = .string }, .{ .name = "damage", .type = .{ .int = .i16 } } } } },
+    .enums = .{.{
+        .name = "MyGame.Sample.Color",
+        .backing_integer = .i8,
+        .values = .{
+            .{ .name = "Red", .value = 0 },
+            .{ .name = "Green", .value = 1 },
+            .{ .name = "Blue", .value = 2 },
+        },
+    }},
+    .unions = .{.{ .name = "MyGame.Sample.Equipment", .options = .{.{ .table = .{ .name = "MyGame.Sample.Weapon" } }} }},
+    .structs = .{.{
+        .name = "MyGame.Sample.Vec3",
+        .fields = .{
+            .{
+                .name = "x",
+                .type = .{ .float = .f32 },
+                .offset = 0,
+            },
+            .{
+                .name = "y",
+                .type = .{ .float = .f32 },
+                .offset = 4,
+            },
+            .{
+                .name = "z",
+                .type = .{ .float = .f32 },
+                .offset = 8,
+            },
+        },
+        .bytesize = 12,
+        .minalign = 4,
+    }},
+    .bit_flags = .{},
+    .root_table = .{ .name = "MyGame.Sample.Monster" },
+}

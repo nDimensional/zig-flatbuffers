@@ -1,0 +1,5 @@
+include "Schema.fbs";
+include "Tensor.fbs";
+include "SparseTensor.fbs";
+include "Message.fbs";
+include "File.fbs";
