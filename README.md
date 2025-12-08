@@ -8,6 +8,8 @@
 - [Usage](#usage)
   - [Codegen](#codegen)
   - [Runtime](#runtime)
+    - [Decoding](#decoding)
+    - [Building](#building)
 - [License](#license)
 
 ## Overview
@@ -169,8 +171,11 @@ Then in your code (e.g. `src/lib.zig`)
 ```zig
 const flatbuffers = @import("flatbuffers");
 const myschema = @import("myschema");
+```
 
-// ...
+#### Decoding
+
+```zig
 // data: []align(8) const u8
 const root = try flatbuffers.decodeRoot(myschema.FooBar, data);
 // root: myschema.FooBar
@@ -187,6 +192,39 @@ const say = root.say();
 
 const height = root.height();
 // height: u16 (a regular Zig integer value)
+```
+
+#### Building
+
+To build a flatbuffers buffer, initialize a `flatbuffers.Builder` and then write all of your tables **bottom-up** (children first, then parents). The generic `writeTable` method takes a comptime table type and struct containing all the table fields together, and returns the same type of table reference value as the decoder methods. This reference value can be used (potentially multiple times) as a field value in a parent table.
+
+Once you've written the root table, finalize the builder by calling `writeRoot()` method with the root table reference.
+
+```zig
+const flatbuffers = @import("flatbuffers");
+const myschema = @import("myschema");
+
+{
+    // ...
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    // ref: myschema.FooBar
+    const ref = try builder.writeTable(myschema.FooBar, .{
+        .meal = .Banana,
+        .say = "hello",
+        .height = 19,
+    });
+
+    try builder.writeRoot(myschema.FooBar, ref);
+
+    // now you can write the finalized buffer to a writeRoot...
+    try builder.write(writer);
+
+    // ... or use an allocator to copy everything to a new buffer.
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+}
 ```
 
 ## License
