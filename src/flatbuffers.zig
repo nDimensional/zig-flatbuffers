@@ -26,10 +26,14 @@ pub const Ref = struct {
     pub inline fn sub(ref: Ref, offset: i32) Ref {
         var result: i64 = @intCast(ref.offset);
         result -|= offset;
-        if (result < 0)
+        if (result < 0) {
+            std.log.err("signed offset underflow sub({*}:{d}, {d})", .{ ref.ptr, ref.offset, offset });
             @panic("signed offset underflow");
-        if (result > ref.len)
+        }
+        if (result > ref.len) {
+            std.log.err("signed offset overflow sub({*}:{d}, {d})", .{ ref.ptr, ref.offset, offset });
             @panic("signed offset overflow");
+        }
 
         return .{ .ptr = ref.ptr, .len = ref.len, .offset = @intCast(result) };
     }
@@ -106,46 +110,46 @@ pub fn Vector(comptime T: type) type {
     };
 }
 
-fn getVectorType(comptime T: type) types.Vector {
-    const element = switch (@typeInfo(T)) {
-        .bool => types.Vector.Element.bool,
-        .int => |info| types.Vector.Element{
-            .int = switch (info.bits) {
-                8 => if (info.signed) .i8 else .u8,
-                16 => if (info.signed) .i16 else .u16,
-                32 => if (info.signed) .i32 else .u32,
-                64 => if (info.signed) .i64 else .u64,
-                else => @compileError("invalid integer type"),
-            },
-        },
-        .float => |info| types.Vector.Element{
-            .float = switch (info.bits) {
-                32 => .f32,
-                64 => .f64,
-            },
-        },
-        .pointer => types.Vector.Element.string,
-        .@"enum" => types.Vector.Element{
-            .@"enum" = .{ .name = @as(*const types.Enum, @field(T, "#type")).name },
-        },
-        .@"struct" => switch (@field(T, "#kind")) {
-            Kind.Table => types.Vector.Element{
-                .table = .{ .name = @as(*const types.Table, @field(T, "#type")).name },
-            },
-            Kind.Vector => @compileError("cannot nest vectors"),
-            Kind.Struct => types.Vector.Element{
-                .@"struct" = .{ .name = @as(*const types.Struct, @field(T, "#type")).name },
-            },
-            Kind.BitFlags => types.Vector.Element{
-                .bit_flags = .{ .name = @as(*const types.BitFlags, @field(T, "#type")).name },
-            },
-            Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
-        },
-        else => @compileError("invalid vector type"),
-    };
+// fn getVectorType(comptime T: type) types.Vector {
+//     const element = switch (@typeInfo(T)) {
+//         .bool => types.Vector.Element.bool,
+//         .int => |info| types.Vector.Element{
+//             .int = switch (info.bits) {
+//                 8 => if (info.signed) .i8 else .u8,
+//                 16 => if (info.signed) .i16 else .u16,
+//                 32 => if (info.signed) .i32 else .u32,
+//                 64 => if (info.signed) .i64 else .u64,
+//                 else => @compileError("invalid integer type"),
+//             },
+//         },
+//         .float => |info| types.Vector.Element{
+//             .float = switch (info.bits) {
+//                 32 => .f32,
+//                 64 => .f64,
+//             },
+//         },
+//         .pointer => types.Vector.Element.string,
+//         .@"enum" => types.Vector.Element{
+//             .@"enum" = .{ .name = @as(*const types.Enum, @field(T, "#type")).name },
+//         },
+//         .@"struct" => switch (@field(T, "#kind")) {
+//             Kind.Table => types.Vector.Element{
+//                 .table = .{ .name = @as(*const types.Table, @field(T, "#type")).name },
+//             },
+//             Kind.Vector => @compileError("cannot nest vectors"),
+//             Kind.Struct => types.Vector.Element{
+//                 .@"struct" = .{ .name = @as(*const types.Struct, @field(T, "#type")).name },
+//             },
+//             Kind.BitFlags => types.Vector.Element{
+//                 .bit_flags = .{ .name = @as(*const types.BitFlags, @field(T, "#type")).name },
+//             },
+//             Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
+//         },
+//         else => @compileError("invalid vector type"),
+//     };
 
-    return types.Vector{ .element = element };
-}
+//     return types.Vector{ .element = element };
+// }
 
 fn getVectorElementSize(comptime T: type) u32 {
     return switch (@typeInfo(T)) {
@@ -158,15 +162,9 @@ fn getVectorElementSize(comptime T: type) u32 {
             Kind.Struct => getStructSize(T),
             Kind.BitFlags => {
                 const bit_flags: *const types.BitFlags = @field(T, "#type");
-                return switch (bit_flags.backing_integer) {
-                    .u8 => 1,
-                    .u16 => 2,
-                    .u32 => 4,
-                    .u64 => 8,
-                    else => @compileError("invalid bit flags backing integer"),
-                };
+                return bit_flags.backing_integer.getSize();
             },
-            Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
+            Kind.Union, Kind.Enum => @compileError("invalid vector type"),
         },
 
         else => @compileError("unexpected type"),
@@ -724,5 +722,504 @@ fn validateVector(schema: *const types.Schema, vector_t: types.Vector, ref: Ref)
                 try validateString(element_ref);
             }
         },
+    }
+}
+
+fn writeScalar(comptime T: type, slot: *[@sizeOf(T)]u8, value: T) void {
+    switch (@typeInfo(T)) {
+        .bool => slot[0] = if (value) 1 else 0,
+        .int => std.mem.writeInt(T, slot, value, .little),
+        .float => |float| switch (float.bits) {
+            32 => std.mem.writeInt(u32, slot, @bitCast(value), .little),
+            64 => std.mem.writeInt(u64, slot, @bitCast(value), .little),
+            else => @compileError("invalid float type"),
+        },
+        .@"enum" => |enum_t| std.mem.writeInt(enum_t.tag_type, slot, @intFromEnum(value), .little),
+        else => @compileError("invalid scalar type"),
+    }
+}
+
+fn writeStruct(comptime S: type, slot: []u8, value: S) void {
+    const struct_t: *const types.Struct = @field(S, "#type");
+    for (struct_t.fields) |field| {
+        const F = @FieldType(S, field.name);
+        const field_value: F = @field(value, field.name);
+        const field_slot = slot[field.offset..];
+        switch (field.type) {
+            .bool, .int, .float => writeScalar(F, field_slot[0..@sizeOf(F)], field_value),
+            .array => @compileError("not implemented"),
+            .@"struct" => @compileError("not implemented"),
+        }
+    }
+}
+
+pub fn getBitFlagsValue(comptime T: type, flags: T) u64 {
+    const bit_flags_t: *const types.BitFlags = @field(T, "#type");
+
+    var value: u64 = 0;
+    for (bit_flags_t.fields) |flag| {
+        if (@field(flags, flag.name)) {
+            value |= flag.value;
+        }
+    }
+
+    return value;
+}
+
+pub const Builder = struct {
+    // pub const block_size = std.heap.page_size_min;
+    pub const block_size = 32;
+
+    allocator: std.mem.Allocator,
+    offset: i64,
+    blocks: std.ArrayList([]align(8) u8),
+    vtable: std.ArrayList(i64),
+    field_refs: std.ArrayList(i64),
+    vector_refs: std.ArrayList(i64),
+
+    pub fn init(allocator: std.mem.Allocator) !Builder {
+        var blocks = std.ArrayList([]align(8) u8).empty;
+        errdefer blocks.deinit(allocator);
+
+        const block = try allocator.alignedAlloc(u8, .@"8", Builder.block_size);
+        errdefer allocator.free(block);
+
+        try blocks.append(allocator, block);
+
+        return .{
+            .allocator = allocator,
+            .offset = 0,
+            .blocks = blocks,
+            .vtable = std.ArrayList(i64).empty,
+            .field_refs = std.ArrayList(i64).empty,
+            .vector_refs = std.ArrayList(i64).empty,
+        };
+    }
+
+    pub fn deinit(self: *Builder) void {
+        for (self.blocks.items) |block|
+            self.allocator.free(block);
+        self.blocks.deinit(self.allocator);
+        self.vtable.deinit(self.allocator);
+        self.field_refs.deinit(self.allocator);
+        self.vector_refs.deinit(self.allocator);
+        self.offset = 0;
+    }
+
+    inline fn capacity(self: *const Builder) i64 {
+        return @intCast(self.blocks.items.len * block_size);
+    }
+
+    fn alloc(
+        self: *Builder,
+        comptime size: u32,
+        comptime min_alignment: u32,
+    ) !*align(@max(size, min_alignment)) [size]u8 {
+        comptime {
+            if (size > Builder.block_size) @compileError("alloc size too large");
+        }
+
+        self.offset = std.mem.alignBackward(i64, self.offset, @max(min_alignment, size));
+        self.offset -= size;
+
+        var head_offset = self.capacity() + self.offset;
+        while (head_offset < 0) : (head_offset += block_size)
+            try self.prepend();
+
+        const head = self.blocks.items[0];
+        return @alignCast(head[@intCast(head_offset)..][0..size]);
+    }
+
+    inline fn fromSOffset(self: *const Builder, soffset: i64) Ref {
+        const uoffset: u32 = @intCast(self.capacity() + soffset);
+        const block_index = @divTrunc(uoffset, block_size);
+        const block_offset = @mod(uoffset, block_size);
+        const block = self.blocks.items[block_index];
+        return Ref{
+            .ptr = block.ptr,
+            .len = @truncate(block.len),
+            .offset = block_offset,
+        };
+    }
+
+    inline fn toSOffset(self: *const Builder, ref: Ref) i64 {
+        var offset: i64 = 0;
+        for (0..self.blocks.items.len) |i| {
+            const j = self.blocks.items.len - i - 1;
+            const block = self.blocks.items[j];
+            if (block.ptr == ref.ptr) {
+                return offset - (block_size - ref.offset);
+            } else {
+                offset -= block_size;
+            }
+        }
+
+        @panic("invalid ref");
+    }
+
+    fn prepend(self: *Builder) !void {
+        const block = try self.allocator.alignedAlloc(u8, .@"8", Builder.block_size);
+        errdefer self.allocator.free(block);
+        try self.blocks.insert(self.allocator, 0, block);
+    }
+
+    inline fn getUOffset(self: *const Builder, ref: Ref) u32 {
+        const soffset = self.toSOffset(ref);
+        if (soffset < self.offset)
+            @panic("invalid ref");
+
+        return @intCast(soffset - self.offset);
+    }
+
+    fn copyString(self: *Builder, value: []const u8, offset: i64) !void {
+        const total_size = self.capacity();
+        var written: usize = 0;
+
+        const offset_start: usize = @intCast(total_size + offset);
+
+        const offset_end = offset_start + value.len;
+        const block_index_start = try std.math.divFloor(usize, offset_start, block_size);
+        const block_index_end = try std.math.divCeil(usize, offset_end - 1, block_size);
+
+        for (block_index_start..block_index_end) |block_index| {
+            const block = self.blocks.items[block_index];
+            const block_start = block_index * block_size;
+            const chunk_start = @mod(@max(offset_start, block_start), block_size);
+            const chunk_end = @min(block_size, offset_end - block_start);
+            const chunk_len = chunk_end - chunk_start;
+
+            @memcpy(block[chunk_start..chunk_end], value[written .. written + chunk_len]);
+            written += chunk_len;
+        }
+
+        std.debug.assert(written == value.len);
+
+        const sentinel_block_index = try std.math.divFloor(usize, offset_end, block_size);
+        const sentinel_block = self.blocks.items[sentinel_block_index];
+        const sentinel_block_start = sentinel_block_index * block_size;
+        const sentinel_offset = offset_end - sentinel_block_start;
+        sentinel_block[sentinel_offset] = 0;
+    }
+
+    pub fn writeString(self: *Builder, value: []const u8) !i64 {
+        const total_len: i64 = @intCast(value.len + 1);
+
+        self.offset = std.mem.alignBackward(i64, self.offset - total_len, @sizeOf(u32));
+        self.offset -= @sizeOf(u32);
+
+        while (self.capacity() + self.offset < 0)
+            try self.prepend();
+
+        const head_start: usize = @intCast(self.capacity() + self.offset);
+        writeScalar(u32, self.blocks.items[0][head_start..][0..@sizeOf(u32)], @truncate(value.len));
+
+        const total_size = self.capacity();
+
+        const offset_start: usize = @intCast(total_size + self.offset + @sizeOf(u32));
+
+        const offset_end = offset_start + value.len;
+        const block_index_start = try std.math.divFloor(usize, offset_start, block_size);
+        const block_index_end = try std.math.divCeil(usize, offset_end - 1, block_size);
+
+        var written: usize = 0;
+        for (block_index_start..block_index_end) |block_index| {
+            const block = self.blocks.items[block_index];
+            const block_start = block_index * block_size;
+            const chunk_start = @mod(@max(offset_start, block_start), block_size);
+            const chunk_end = @min(block_size, offset_end - block_start);
+            const chunk_len = chunk_end - chunk_start;
+
+            @memcpy(block[chunk_start..chunk_end], value[written .. written + chunk_len]);
+            written += chunk_len;
+        }
+
+        std.debug.assert(written == value.len);
+
+        const sentinel_block_index = try std.math.divFloor(usize, offset_end, block_size);
+        const sentinel_block = self.blocks.items[sentinel_block_index];
+        const sentinel_block_start = sentinel_block_index * block_size;
+        const sentinel_offset = offset_end - sentinel_block_start;
+        sentinel_block[sentinel_offset] = 0;
+
+        return self.offset;
+    }
+
+    fn Unwrap(comptime T: type) type {
+        return switch (@typeInfo(T)) {
+            .optional => |info| info.child,
+            else => T,
+        };
+    }
+
+    fn Wrap(comptime T: type) type {
+        return switch (@typeInfo(T)) {
+            .optional => T,
+            else => @Type(.{ .optional = .{ .child = T } }),
+        };
+    }
+
+    fn wrap(value: anytype) Wrap(@TypeOf(value)) {
+        return switch (@typeInfo(@TypeOf(value))) {
+            .optional => value,
+            else => @as(?@TypeOf(value), value),
+        };
+    }
+
+    pub fn writeTable(self: *Builder, comptime T: type, fields: @field(T, "#constructor")) !T {
+        if (@field(T, "#kind") != Kind.Table)
+            @compileError("invalid table type");
+
+        const t: *const types.Table = @field(T, "#type");
+
+        // The very first thing we need to do is iterate over the fields,
+        // write out any string and vector values, and save refs to them.
+        try self.field_refs.resize(self.allocator, t.fields.len);
+        defer self.field_refs.clearRetainingCapacity();
+        @memset(self.field_refs.items, 0);
+
+        var field_id: u16 = 0;
+        inline for (t.fields) |field| {
+            defer switch (field.type) {
+                .@"union" => field_id += 2,
+                else => field_id += 1,
+            };
+
+            if (!field.deprecated) {
+                switch (field.type) {
+                    .string => if (wrap(@field(fields, field.name))) |value| {
+                        self.field_refs.items[field_id] = try self.writeString(value);
+                    },
+                    .vector => |vector_t| if (wrap(@field(fields, field.name))) |value| {
+                        const alignment = @max(vector_t.element_size, @sizeOf(u32));
+
+                        switch (vector_t.element) {
+                            .bool, .int, .float, .@"enum" => {
+                                for (0..value.len) |i| {
+                                    const j = value.len - i - 1;
+                                    const item = value[j];
+                                    const item_slot = try self.alloc(vector_t.element_size, alignment);
+                                    writeScalar(@TypeOf(item), item_slot, item);
+                                }
+                            },
+                            .@"struct" => {
+                                for (0..value.len) |i| {
+                                    const j = value.len - i - 1;
+                                    const item = value[j];
+                                    const item_slot = try self.alloc(vector_t.element_size, alignment);
+                                    writeStruct(@TypeOf(item), item_slot, item);
+                                }
+                            },
+                            .bit_flags => @compileError("not implemented"),
+                            .string => {
+                                try self.vector_refs.resize(self.allocator, value.len);
+                                defer self.vector_refs.clearRetainingCapacity();
+                                for (value, 0..) |item, i|
+                                    self.vector_refs.items[i] = try self.writeString(item);
+
+                                for (0..value.len) |i| {
+                                    const j = value.len - i - 1;
+                                    const item_slot = try self.alloc(@sizeOf(u32), alignment);
+                                    const ref = self.vector_refs.items[j];
+                                    writeScalar(u32, item_slot, @intCast(ref - self.offset));
+                                }
+                            },
+                            .table => {
+                                for (0..value.len) |i| {
+                                    const j = value.len - i - 1;
+                                    const item = value[j];
+                                    const item_slot = try self.alloc(@sizeOf(u32), alignment);
+                                    const ref: Ref = @field(item, "#ref");
+                                    writeScalar(u32, item_slot, self.getUOffset(ref));
+                                }
+                            },
+                        }
+
+                        const len_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
+                        writeScalar(u32, len_slot, @truncate(value.len));
+
+                        self.field_refs.items[field_id] = self.offset;
+                    },
+                    else => {},
+                }
+            }
+        }
+
+        try self.vtable.resize(self.allocator, field_id);
+        defer self.vtable.clearRetainingCapacity();
+        @memset(self.vtable.items, 0);
+
+        const table_end = self.offset;
+
+        field_id = 0;
+        inline for (t.fields) |field| {
+            defer switch (field.type) {
+                .@"union" => field_id += 2,
+                else => field_id += 1,
+            };
+
+            if (!field.deprecated) {
+                const F = Unwrap(@FieldType(@field(T, "#constructor"), field.name));
+
+                switch (field.type) {
+                    .bool, .float, .int, .@"enum" => {
+                        const field_value: F = @field(fields, field.name);
+                        const slot = try self.alloc(@sizeOf(F), @sizeOf(F));
+                        writeScalar(F, slot, field_value);
+                        self.vtable.items[field_id] = self.offset;
+                    },
+                    .@"struct" => {
+                        if (wrap(@field(fields, field.name))) |field_value| {
+                            const struct_t: *const types.Struct = @field(F, "#type");
+
+                            // TODO: incremental struct writing
+                            const slot = try self.alloc(struct_t.bytesize, struct_t.minalign);
+                            writeStruct(F, slot, field_value);
+                            self.vtable.items[field_id] = self.offset;
+                        }
+                    },
+                    .bit_flags => {
+                        if (@field(F, "#kind") != Kind.BitFlags)
+                            @compileError("invalid bit flags type");
+
+                        const bit_flags_t: *const types.BitFlags = @field(F, "#type");
+                        const size = bit_flags_t.backing_integer.getSize();
+
+                        const field_value: F = @field(fields, field.name);
+                        const flags = getBitFlagsValue(F, field_value);
+                        if (flags != 0) {
+                            const slot = try self.alloc(size, size);
+                            switch (bit_flags_t.backing_integer) {
+                                .u8 => std.mem.writeInt(u8, slot, @truncate(flags), .little),
+                                .u16 => std.mem.writeInt(u16, slot, @truncate(flags), .little),
+                                .u32 => std.mem.writeInt(u32, slot, @truncate(flags), .little),
+                                .u64 => std.mem.writeInt(u64, slot, @truncate(flags), .little),
+                                else => @compileError("invalid bit flags type"),
+                            }
+
+                            self.vtable.items[field_id] = self.offset;
+                        }
+                    },
+                    .table, .vector, .string => {
+                        if (wrap(@field(fields, field.name))) |field_value| {
+                            const slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
+
+                            const uoffset: u32 = switch (field.type) {
+                                .table => self.getUOffset(@field(field_value, "#ref")),
+                                .vector, .string => @intCast(self.field_refs.items[field_id] - self.offset),
+                                else => unreachable,
+                            };
+
+                            writeScalar(u32, slot, uoffset);
+                            self.vtable.items[field_id] = self.offset;
+                        }
+                    },
+                    .@"union" => {
+                        const field_value: F = @field(fields, field.name);
+                        if (field_value != @as(F, @enumFromInt(0))) {
+                            const tag_slot = try self.alloc(1, 1);
+                            tag_slot[0] = @intFromEnum(field_value);
+                            self.vtable.items[field_id] = self.offset;
+
+                            const ref_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
+                            const ref: Ref = @field(@field(field_value, @tagName(field_value)), "#ref");
+                            std.mem.writeInt(u32, ref_slot, self.getUOffset(ref), .little);
+                            self.vtable.items[field_id + 1] = self.offset;
+                        }
+                    },
+                }
+            }
+        }
+
+        // now we alloc the vtable soffset slot
+        const vtable_soffset_slot = try self.alloc(@sizeOf(i32), @sizeOf(i32));
+        const table_start = self.offset;
+
+        const vtable_len = self.vtable.items.len;
+
+        for (0..vtable_len) |i| {
+            const vtable_slot = try self.alloc(@sizeOf(u16), @sizeOf(u16));
+
+            const j = vtable_len - i - 1;
+            if (self.vtable.items[j] != 0) {
+                const field_uoffset: u16 = @intCast(self.vtable.items[j] - table_start);
+                std.debug.assert(field_uoffset >= @sizeOf(i32));
+                std.mem.writeInt(u16, vtable_slot, field_uoffset, .little);
+            } else {
+                std.mem.writeInt(u16, vtable_slot, 0, .little);
+            }
+        }
+
+        const table_size_slot = try self.alloc(@sizeOf(u16), @sizeOf(u16));
+        const table_size: u16 = @intCast(table_end - table_start);
+        std.mem.writeInt(u16, table_size_slot, table_size, .little);
+
+        const vtable_size_slot = try self.alloc(@sizeOf(u16), @sizeOf(u16));
+        const vtable_size = @sizeOf(u16) * (2 + vtable_len);
+        std.mem.writeInt(u16, vtable_size_slot, @truncate(vtable_size), .little);
+
+        std.debug.assert(@as(i64, @intCast(vtable_size)) == table_start - self.offset);
+
+        const vtable_soffset = @as(i32, @intCast(vtable_size));
+        std.mem.writeInt(i32, vtable_soffset_slot, vtable_soffset, .little);
+
+        return .{ .@"#ref" = self.fromSOffset(table_start) };
+    }
+
+    pub fn writeRoot(self: *Builder, comptime T: type, root: T) !void {
+        if (@field(T, "#kind") != Kind.Table)
+            @compileError("root value must be a table type");
+
+        const root_slot = try self.alloc(@sizeOf(u32), @sizeOf(u32));
+        const root_ref: Ref = @field(root, "#ref");
+
+        const root_offset = self.getUOffset(root_ref);
+        std.mem.writeInt(u32, root_slot, root_offset, .little);
+    }
+
+    pub fn write(self: *Builder, writer: *std.io.Writer) !void {
+        if (self.blocks.items.len == 0)
+            return error.Empty;
+
+        const head_offset: usize = @intCast(@mod(self.offset, block_size));
+        const head = self.blocks.items[0];
+        try writer.writeAll(head[head_offset..]);
+
+        for (self.blocks.items[1..]) |block| {
+            try writer.writeAll(block);
+        }
+    }
+
+    pub fn writeAlloc(self: *Builder, allocator: std.mem.Allocator) ![]align(8) const u8 {
+        const data = try allocator.alignedAlloc(u8, .@"8", @intCast(@abs(self.offset)));
+        errdefer allocator.free(data);
+
+        var writer = std.io.Writer.fixed(data);
+        try self.write(&writer);
+
+        return data;
+    }
+};
+
+test "builder" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try Builder.init(allocator);
+    defer builder.deinit();
+
+    const b = .{2} ** 119;
+    const b_ref = try builder.writeString(&b);
+    std.log.warn("got b_ref: {any}", .{b_ref});
+
+    const a = .{1} ** 12;
+    const a_ref = try builder.writeString(&a);
+    std.log.warn("got a_ref: {any}", .{a_ref});
+
+    std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
+    for (0..builder.blocks.items.len) |i| {
+        const block = builder.blocks.items[i];
+        std.log.warn("- {d} {*}", .{ i, block.ptr });
+        std.log.warn("  {x}", .{block});
     }
 }

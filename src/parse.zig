@@ -194,10 +194,6 @@ pub const Parser = struct {
                     const field_ref = object_fields.get(j);
                     const field_name = field_ref.name();
                     const field_type = field_ref.type();
-                    std.log.warn(
-                        "struct {s} field {s}: offset {d}, padding: {d}, type base_size: {d}",
-                        .{ object_name, field_name, field_ref.offset(), field_ref.padding(), field_type.base_size() },
-                    );
 
                     field.* = types.Struct.Field{
                         .name = try copyName(arena_allocator, field_name),

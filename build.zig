@@ -10,6 +10,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const reflection = b.addModule("reflection", .{
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = b.path("src/reflection.zig"),
+        .imports = &.{
+            .{ .name = "flatbuffers", .module = flatbuffers },
+        },
+    });
+
     const parse = b.addModule("parse", .{
         .target = target,
         .optimize = optimize,
@@ -80,4 +89,22 @@ pub fn build(b: *std.Build) void {
     b.step("run", "run example.zig").dependOn(&example_run.step);
 
     b.step("check", "Check if example.zig compiles").dependOn(&example.step);
+
+    { // test
+        const tests = b.addTest(.{
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .root_source_file = b.path("test/test.zig"),
+                .imports = &.{
+                    .{ .name = "flatbuffers", .module = flatbuffers },
+                    .{ .name = "reflection", .module = reflection },
+                },
+            }),
+        });
+
+        const run_tests = b.addRunArtifact(tests);
+
+        b.step("test", "run the tests").dependOn(&run_tests.step);
+    }
 }

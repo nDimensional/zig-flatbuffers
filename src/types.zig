@@ -10,7 +10,7 @@ pub const Integer = enum {
     u64,
     i64,
 
-    pub fn getSize(self: Integer) u32 {
+    pub fn getSize(self: Integer) u16 {
         return switch (self) {
             .u8, .i8 => 1,
             .u16, .i16 => 2,
@@ -24,7 +24,7 @@ pub const Float = enum {
     f32,
     f64,
 
-    pub fn getSize(self: Float) u32 {
+    pub fn getSize(self: Float) u16 {
         return switch (self) {
             .f32 => 4,
             .f64 => 8,
