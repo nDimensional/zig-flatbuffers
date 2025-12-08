@@ -83,7 +83,6 @@ pub const reflection = struct {
             return flatbuffers.decodeVectorField(reflection.KeyValue, 4, @"#self".@"#ref");
         }
 
-        /// Array of documentation comments for the enum
         pub fn documentation(@"#self": Enum) ?flatbuffers.Vector(flatbuffers.String) {
             return flatbuffers.decodeVectorField(flatbuffers.String, 5, @"#self".@"#ref");
         }
@@ -121,7 +120,6 @@ pub const reflection = struct {
             return flatbuffers.decodeTableField(reflection.Type, 3, @"#self".@"#ref");
         }
 
-        /// Array of documentation comments for the enum value
         pub fn documentation(@"#self": EnumVal) ?flatbuffers.Vector(flatbuffers.String) {
             return flatbuffers.decodeVectorField(flatbuffers.String, 4, @"#self".@"#ref");
         }
@@ -196,7 +194,6 @@ pub const reflection = struct {
             return flatbuffers.decodeVectorField(reflection.KeyValue, 9, @"#self".@"#ref");
         }
 
-        /// Array of documentation comments for the field
         pub fn documentation(@"#self": Field) ?flatbuffers.Vector(flatbuffers.String) {
             return flatbuffers.decodeVectorField(flatbuffers.String, 10, @"#self".@"#ref");
         }
@@ -280,7 +277,6 @@ pub const reflection = struct {
             return flatbuffers.decodeVectorField(reflection.KeyValue, 5, @"#self".@"#ref");
         }
 
-        /// Array of documentation comments for the object
         pub fn documentation(@"#self": Object) ?flatbuffers.Vector(flatbuffers.String) {
             return flatbuffers.decodeVectorField(flatbuffers.String, 6, @"#self".@"#ref");
         }

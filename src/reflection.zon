@@ -26,15 +26,11 @@
                 .element = .{ .table = .{ .name = "reflection.KeyValue" } },
                 .minalign = 4,
             } } },
-            .{
-                .name = "documentation",
-                .type = .{ .vector = .{
-                    .element_size = 4,
-                    .element = .string,
-                    .minalign = 4,
-                } },
-                .documentation = .{" Array of documentation comments for the enum"},
-            },
+            .{ .name = "documentation", .type = .{ .vector = .{
+                .element_size = 4,
+                .element = .string,
+                .minalign = 4,
+            } } },
             .{
                 .name = "declaration_file",
                 .type = .string,
@@ -54,15 +50,11 @@
                 .deprecated = true,
             },
             .{ .name = "union_type", .type = .{ .table = .{ .name = "reflection.Type" } } },
-            .{
-                .name = "documentation",
-                .type = .{ .vector = .{
-                    .element_size = 4,
-                    .element = .string,
-                    .minalign = 4,
-                } },
-                .documentation = .{" Array of documentation comments for the enum value"},
-            },
+            .{ .name = "documentation", .type = .{ .vector = .{
+                .element_size = 4,
+                .element = .string,
+                .minalign = 4,
+            } } },
             .{ .name = "attributes", .type = .{ .vector = .{
                 .element_size = 4,
                 .element = .{ .table = .{ .name = "reflection.KeyValue" } },
@@ -92,15 +84,11 @@
                 .element = .{ .table = .{ .name = "reflection.KeyValue" } },
                 .minalign = 4,
             } } },
-            .{
-                .name = "documentation",
-                .type = .{ .vector = .{
-                    .element_size = 4,
-                    .element = .string,
-                    .minalign = 4,
-                } },
-                .documentation = .{" Array of documentation comments for the field"},
-            },
+            .{ .name = "documentation", .type = .{ .vector = .{
+                .element_size = 4,
+                .element = .string,
+                .minalign = 4,
+            } } },
             .{ .name = "optional", .type = .bool },
             .{
                 .name = "padding",
@@ -141,15 +129,11 @@
                 .element = .{ .table = .{ .name = "reflection.KeyValue" } },
                 .minalign = 4,
             } } },
-            .{
-                .name = "documentation",
-                .type = .{ .vector = .{
-                    .element_size = 4,
-                    .element = .string,
-                    .minalign = 4,
-                } },
-                .documentation = .{" Array of documentation comments for the object"},
-            },
+            .{ .name = "documentation", .type = .{ .vector = .{
+                .element_size = 4,
+                .element = .string,
+                .minalign = 4,
+            } } },
             .{
                 .name = "declaration_file",
                 .type = .string,
