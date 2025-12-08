@@ -3,7 +3,7 @@ const std = @import("std");
 const flatbuffers = @import("flatbuffers");
 const reflection = @import("reflection").reflection;
 
-const simple = @import("simple/simple.zig");
+const simple = @import("simple/simple.zig").Eclectic;
 const arrow = @import("arrow/arrow.zig").org.apache.arrow.flatbuf;
 
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {

@@ -1,8 +1,8 @@
 .{
-    .tables = .{.{ .name = "FooBar", .fields = .{
+    .tables = .{.{ .name = "Eclectic.FooBar", .fields = .{
         .{
             .name = "meal",
-            .type = .{ .@"enum" = .{ .name = "Fruit" } },
+            .type = .{ .@"enum" = .{ .name = "Eclectic.Fruit" } },
             .default_integer = -1,
         },
         .{
@@ -14,12 +14,12 @@
         .{ .name = "height", .type = .{ .int = .i16 } },
     } }},
     .enums = .{.{
-        .name = "Fruit",
+        .name = "Eclectic.Fruit",
         .backing_integer = .i8,
         .values = .{ .{ .name = "Banana", .value = -1 }, .{ .name = "Orange", .value = 42 } },
     }},
     .unions = .{},
     .structs = .{},
     .bit_flags = .{},
-    .root_table = .{ .name = "FooBar" },
+    .root_table = .{ .name = "Eclectic.FooBar" },
 }
