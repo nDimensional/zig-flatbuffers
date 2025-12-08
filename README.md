@@ -73,15 +73,17 @@ First, compile your schema to a binary `.bfbs` file using the `flatc` CLI (via [
 flatc -b --schema --bfbs-comments --bfbs-builtins myschema.fbs
 ```
 
-Then generate a `.zon` IR for the schema.
+Then clone the repo and generate a `.zon` IR for the schema.
 
 ```
+git clone https://github.com/nDimensional/zig-flatbuffers.git
+cd zig-flatbuffers
 zig build parse -- myschema.bfbs > myschema.zon
 ```
 
 Then generate the Zig decoder library with
 
-```sh
+```
 zig build generate -- myschema.zon | zig fmt --stdin > myschema.zig
 ```
 
@@ -134,7 +136,7 @@ To use the generated library, you will also have to add the `flatbuffers` module
 
 ```
 zig fetch --save=flatbuffers \
-  https://github.com/nDimensional/zig-flatbuffers/archive/refs/tags/v0.0.8.tar.gz
+  https://github.com/nDimensional/zig-flatbuffers/archive/refs/tags/v0.1.0.tar.gz
 ```
 
 In build.zig:
