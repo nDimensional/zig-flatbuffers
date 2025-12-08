@@ -5,25 +5,6 @@ const reflection = @import("reflection").reflection;
 
 const simple = @import("simple/simple.zig");
 
-// test "simple builder" {
-//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-//     defer std.debug.assert(gpa.deinit() == .ok);
-//     const allocator = gpa.allocator();
-
-//     var builder = try flatbuffers.Builder.init(allocator);
-//     defer builder.deinit();
-
-//     _ = try builder.writeString("hello world");
-
-//     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
-//     for (0..builder.blocks.items.len) |i| {
-//         const j = builder.blocks.items.len - i - 1;
-//         const block = builder.blocks.items[j];
-//         std.log.warn("- {d} {*} (len {d})", .{ j, block.ptr, block.len });
-//         std.log.warn("    {x}", .{block});
-//     }
-// }
-
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {
     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
     for (0..builder.blocks.items.len) |i| {
