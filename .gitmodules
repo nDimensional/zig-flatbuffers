@@ -1,0 +1,3 @@
+[submodule "flatcc"]
+	path = flatcc
+	url = https://github.com/dvidelabs/flatcc.git
