@@ -26,14 +26,11 @@ pub const Ref = struct {
     pub inline fn sub(ref: Ref, offset: i32) Ref {
         var result: i64 = @intCast(ref.offset);
         result -|= offset;
-        if (result < 0) {
-            std.log.err("signed offset underflow sub({*}:{d}, {d})", .{ ref.ptr, ref.offset, offset });
+        if (result < 0)
             @panic("signed offset underflow");
-        }
-        if (result > ref.len) {
-            std.log.err("signed offset overflow sub({*}:{d}, {d})", .{ ref.ptr, ref.offset, offset });
+
+        if (result > ref.len)
             @panic("signed offset overflow");
-        }
 
         return .{ .ptr = ref.ptr, .len = ref.len, .offset = @intCast(result) };
     }
@@ -63,9 +60,13 @@ pub const Ref = struct {
 
         return @enumFromInt(ref.decodeScalar(info.tag_type));
     }
+
+    pub inline fn format(self: Ref, writer: *std.io.Writer) !void {
+        try writer.print("{*}[{d}]", .{ self.ptr, self.offset });
+    }
 };
 
-/// Used to differentiate the kinds of struct declarations
+/// Used to differentiate the kinds of declarations
 pub const Kind = enum {
     Table,
     Struct,
@@ -1107,10 +1108,6 @@ pub const Builder = struct {
                                 try self.prepend();
 
                             try self.writeBytes(self.struct_buffer.items, self.offset);
-
-                            // // TODO: incremental struct writing
-                            // const slot = try self.alloc(struct_t.bytesize, struct_t.minalign);
-                            // writeStruct(F, slot, field_value);
 
                             self.vtable.items[field_id] = self.offset;
                         }
