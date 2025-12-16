@@ -62,7 +62,7 @@ pub const Ref = struct {
     }
 
     pub inline fn format(self: Ref, writer: *std.io.Writer) !void {
-        try writer.print("{*}[{d}]", .{ self.ptr, self.offset });
+        try writer.print("{*}[0x{x:0>8}]", .{ self.ptr, self.offset });
     }
 };
 
