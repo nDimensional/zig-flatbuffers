@@ -108,6 +108,22 @@ pub fn Vector(comptime T: type) type {
                 else => @compileError("invalid vector type"),
             };
         }
+
+        pub const Iterator = struct {
+            vector: Self,
+            index: usize = 0,
+
+            pub fn next(self: *Iterator) ?T {
+                if (self.index >= self.vector.len())
+                    return null;
+                defer self.index += 1;
+                return self.vector.get(self.index);
+            }
+        };
+
+        pub inline fn iterator(self: Self) Iterator {
+            return .{ .vector = self };
+        }
     };
 }
 
