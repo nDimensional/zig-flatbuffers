@@ -50,7 +50,7 @@ pub const Enum = struct {
     values: []const Enum.Value,
     documentation: ?[]const []const u8 = null,
 
-    pub fn format(self: Enum, writer: *std.io.Writer) !void {
+    pub fn format(self: Enum, writer: *std.Io.Writer) !void {
         try std.zon.stringify.serialize(self, .{
             .emit_default_optional_fields = false,
         }, writer);
@@ -67,7 +67,7 @@ pub const Union = struct {
     options: []const Option,
     documentation: ?[]const []const u8 = null,
 
-    pub fn format(self: Union, writer: *std.io.Writer) !void {
+    pub fn format(self: Union, writer: *std.Io.Writer) !void {
         try std.zon.stringify.serialize(self, .{
             .emit_default_optional_fields = false,
         }, writer);
@@ -102,7 +102,7 @@ pub const Table = struct {
     fields: []const Table.Field,
     documentation: ?[]const []const u8 = null,
 
-    pub fn format(self: Table, writer: *std.io.Writer) !void {
+    pub fn format(self: Table, writer: *std.Io.Writer) !void {
         try std.zon.stringify.serialize(self, .{
             .emit_default_optional_fields = false,
         }, writer);
@@ -120,7 +120,7 @@ pub const Vector = struct {
         table: TableRef,
         string,
 
-        pub fn format(self: Element, writer: *std.io.Writer) !void {
+        pub fn format(self: Element, writer: *std.Io.Writer) !void {
             switch (self) {
                 .bool => try writer.writeAll("bool"),
                 .int => |int| try writer.writeAll(@tagName(int)),
@@ -138,7 +138,7 @@ pub const Vector = struct {
     element: Vector.Element,
     minalign: u16,
 
-    pub fn format(self: Vector, writer: *std.io.Writer) !void {
+    pub fn format(self: Vector, writer: *std.Io.Writer) !void {
         try writer.print("Vector({f})", .{self.element});
     }
 };
@@ -158,7 +158,7 @@ pub const Struct = struct {
             array: *const Struct.Field.Array,
             @"struct": StructRef,
 
-            pub fn format(self: Type, writer: *std.io.Writer) !void {
+            pub fn format(self: Type, writer: *std.Io.Writer) !void {
                 switch (self) {
                     .bool => try writer.writeAll("bool"),
                     .int => |int| try writer.writeAll(@tagName(int)),
@@ -181,7 +181,7 @@ pub const Struct = struct {
     minalign: u16,
     documentation: ?[]const []const u8 = null,
 
-    pub fn format(self: Struct, writer: *std.io.Writer) !void {
+    pub fn format(self: Struct, writer: *std.Io.Writer) !void {
         std.zon.stringify.serializeMaxDepth(self, .{
             .emit_default_optional_fields = false,
         }, writer, 16) catch {
@@ -202,7 +202,7 @@ pub const BitFlags = struct {
     fields: []const BitFlags.Field,
     documentation: ?[]const []const u8 = null,
 
-    pub inline fn format(self: BitFlags, writer: *std.io.Writer) !void {
+    pub inline fn format(self: BitFlags, writer: *std.Io.Writer) !void {
         try std.zon.stringify.serialize(self, .{
             .emit_default_optional_fields = false,
         }, writer);
@@ -221,7 +221,7 @@ pub const Schema = struct {
 
     root_table: ?TableRef = null,
 
-    pub fn format(self: Schema, writer: *std.io.Writer) !void {
+    pub fn format(self: Schema, writer: *std.Io.Writer) !void {
         std.zon.stringify.serializeMaxDepth(self, .{
             .emit_default_optional_fields = false,
         }, writer, 16) catch return error.WriteFailed;
@@ -317,7 +317,7 @@ pub const Schema = struct {
 const Escape = struct {
     name: []const u8,
 
-    pub fn format(self: Escape, writer: *std.io.Writer) !void {
+    pub fn format(self: Escape, writer: *std.Io.Writer) !void {
         var iter = std.mem.splitScalar(u8, self.name, '.');
         var i: usize = 0;
         while (iter.next()) |term| : (i += 1) {

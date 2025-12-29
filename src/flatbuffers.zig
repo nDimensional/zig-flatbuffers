@@ -61,7 +61,7 @@ pub const Ref = struct {
         return @enumFromInt(ref.decodeScalar(info.tag_type));
     }
 
-    pub inline fn format(self: Ref, writer: *std.io.Writer) !void {
+    pub inline fn format(self: Ref, writer: *std.Io.Writer) !void {
         try writer.print("{*}[0x{x:0>8}]", .{ self.ptr, self.offset });
     }
 };
@@ -1226,7 +1226,7 @@ pub const Builder = struct {
         std.mem.writeInt(u32, root_slot, root_offset, .little);
     }
 
-    pub fn write(self: *Builder, writer: *std.io.Writer) !void {
+    pub fn write(self: *Builder, writer: *std.Io.Writer) !void {
         if (self.blocks.items.len == 0)
             return error.Empty;
 
@@ -1243,7 +1243,7 @@ pub const Builder = struct {
         const data = try allocator.alignedAlloc(u8, .@"8", @intCast(@abs(self.offset)));
         errdefer allocator.free(data);
 
-        var writer = std.io.Writer.fixed(data);
+        var writer = std.Io.Writer.fixed(data);
         try self.write(&writer);
 
         return data;

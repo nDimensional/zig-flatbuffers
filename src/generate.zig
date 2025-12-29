@@ -16,7 +16,7 @@ inline fn pop(name: []const u8) []const u8 {
 const Escape = struct {
     name: []const u8,
 
-    pub fn format(self: Escape, writer: *std.io.Writer) !void {
+    pub fn format(self: Escape, writer: *std.Io.Writer) !void {
         var iter = std.mem.splitScalar(u8, self.name, '.');
         var i: usize = 0;
         while (iter.next()) |term| : (i += 1) {
@@ -31,7 +31,7 @@ inline fn esc(name: []const u8) Escape {
     return .{ .name = name };
 }
 
-pub fn writeEnum(self: types.Enum, index: usize, writer: *std.io.Writer) !void {
+pub fn writeEnum(self: types.Enum, index: usize, writer: *std.Io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
             try writer.print("///{s}\n", .{line});
@@ -58,7 +58,7 @@ pub fn writeEnum(self: types.Enum, index: usize, writer: *std.io.Writer) !void {
     try writer.writeAll("};\n\n");
 }
 
-pub fn writeUnion(self: types.Union, index: usize, writer: *std.io.Writer) !void {
+pub fn writeUnion(self: types.Union, index: usize, writer: *std.Io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
             try writer.print("///{s}\n", .{line});
@@ -92,7 +92,7 @@ pub fn writeUnion(self: types.Union, index: usize, writer: *std.io.Writer) !void
 const TableConstructor = struct {
     table: types.Table,
 
-    pub fn format(self: TableConstructor, writer: *std.io.Writer) !void {
+    pub fn format(self: TableConstructor, writer: *std.Io.Writer) !void {
         try writer.writeAll("struct {\n");
 
         for (self.table.fields) |field| {
@@ -157,7 +157,7 @@ const TableConstructor = struct {
     }
 };
 
-pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void {
+pub fn writeTable(self: types.Table, index: usize, writer: *std.Io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
             try writer.print("///{s}\n", .{line});
@@ -289,7 +289,7 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.io.Writer) !void
     try writer.writeAll("};\n\n");
 }
 
-pub fn writeStruct(self: types.Struct, index: usize, writer: *std.io.Writer) !void {
+pub fn writeStruct(self: types.Struct, index: usize, writer: *std.Io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
             try writer.print("///{s}\n", .{line});
@@ -315,13 +315,13 @@ pub fn writeStruct(self: types.Struct, index: usize, writer: *std.io.Writer) !vo
     try writer.writeAll("};\n\n");
 }
 
-pub fn writeBitFlags(self: types.BitFlags, index: usize, writer: *std.io.Writer) !void {
+pub fn writeBitFlags(self: types.BitFlags, index: usize, writer: *std.Io.Writer) !void {
     if (self.documentation) |documentation|
         for (documentation) |line|
             try writer.print("///{s}\n", .{line});
 
     var flags_buffer: [256]u8 = undefined;
-    var flags_writer = std.io.Writer.fixed(&flags_buffer);
+    var flags_writer = std.Io.Writer.fixed(&flags_buffer);
     for (self.fields, 0..) |field, i| {
         if (i > 0)
             try flags_writer.writeAll(", ");
@@ -383,7 +383,7 @@ const NamespacePrefixMap = struct {
     }
 };
 
-pub fn writeSchema(self: types.Schema, allocator: std.mem.Allocator, ir_filename: []const u8, writer: *std.io.Writer) !void {
+pub fn writeSchema(self: types.Schema, allocator: std.mem.Allocator, ir_filename: []const u8, writer: *std.Io.Writer) !void {
     try writer.print(
         \\const std = @import("std");
         \\
@@ -436,7 +436,7 @@ pub fn writeSchema(self: types.Schema, allocator: std.mem.Allocator, ir_filename
 
 }
 
-fn writeNamespace(schema: types.Schema, namespace: ?[]const u8, writer: *std.io.Writer) !void {
+fn writeNamespace(schema: types.Schema, namespace: ?[]const u8, writer: *std.Io.Writer) !void {
     for (schema.enums, 0..) |t, i|
         if (isInNamespace(namespace, t.name))
             try writeEnum(t, i, writer);
