@@ -220,7 +220,7 @@ const myschema = @import("myschema");
 
     try builder.writeRoot(myschema.FooBar, ref);
 
-    // now you can write the finalized buffer to a writeRoot...
+    // now you can write the finalized buffer to a *std.io.Writer...
     try builder.write(writer);
 
     // ... or use an allocator to copy everything to a new buffer.
