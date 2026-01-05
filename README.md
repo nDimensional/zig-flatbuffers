@@ -136,7 +136,7 @@ To use the generated library, you will also have to add the `flatbuffers` module
 
 ```
 zig fetch --save=flatbuffers \
-  https://github.com/nDimensional/zig-flatbuffers/archive/refs/tags/v0.1.1.tar.gz
+  https://github.com/nDimensional/zig-flatbuffers/archive/refs/tags/v0.1.2.tar.gz
 ```
 
 In build.zig:
