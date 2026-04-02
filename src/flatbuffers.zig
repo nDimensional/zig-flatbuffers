@@ -784,8 +784,12 @@ pub fn getBitFlagsValue(comptime T: type, flags: T) u64 {
 }
 
 pub const Builder = struct {
-    // pub const block_size = std.heap.page_size_min;
-    pub const block_size = 32;
+    // Use the platform page size so each block aligns naturally with the
+    // allocator.  The original value of 32 caused O(n²) scaling for large
+    // buffers because every 32 bytes created a new block, and both
+    // toSOffset (linear search) and prepend (insert-at-0 shift) iterate
+    // the full block list.
+    pub const block_size: u32 = @intCast(std.heap.page_size_min);
 
     allocator: std.mem.Allocator,
     offset: i64,
