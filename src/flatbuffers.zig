@@ -944,7 +944,7 @@ pub const Builder = struct {
     fn Wrap(comptime T: type) type {
         return switch (@typeInfo(T)) {
             .optional => T,
-            else => @Type(.{ .optional = .{ .child = T } }),
+            else => ?T,
         };
     }
 
