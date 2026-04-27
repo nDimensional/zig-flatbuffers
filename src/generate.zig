@@ -468,8 +468,13 @@ fn isInNamespace(namespace: ?[]const u8, name: []const u8) bool {
     }
 }
 
-pub fn main() !void {
-    var args = std.process.args();
+pub fn main(
+    init: std.process.Init,
+) !void 
+{
+    const io = init.io;
+
+    var args = init.minimal.args.iterate();
 
     _ = args.next() orelse unreachable;
 
@@ -484,14 +489,14 @@ pub fn main() !void {
     if (!std.mem.eql(u8, ir_filename[file_ext_index..], ".zon"))
         return error.InvalidFileExtension;
 
-    const file = try std.fs.cwd().openFile(ir_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io,ir_path, .{});
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     const data = try std.posix.mmap(
         null,
         stat.size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .PRIVATE },
         file.handle,
         0,
@@ -500,7 +505,13 @@ pub fn main() !void {
     const allocator = std.heap.c_allocator;
     const copy = try allocator.dupeZ(u8, data);
     defer allocator.free(copy);
-    const schema = try std.zon.parse.fromSlice(flatbuffers.types.Schema, allocator, copy, null, .{});
+    const schema = try std.zon.parse.fromSliceAlloc(
+        flatbuffers.types.Schema,
+        allocator,
+        copy,
+        null,
+        .{.ignore_unknown_fields = true}
+    );
 
     // var parser = try Parser.init(std.heap.c_allocator, @alignCast(data));
     // defer parser.deinit();
@@ -508,8 +519,8 @@ pub fn main() !void {
     // const result = try parser.parse(s
 
     var buffer: [4096]u8 = undefined;
-    const output = std.fs.File.stdout();
-    var output_writer = output.writer(&buffer);
+    const output = std.Io.File.stdout();
+    var output_writer = output.writer(io, &buffer);
 
     // try writeSchema(result.schema, std.heap.c_allocator, &output_writer.interface);
     try writeSchema(schema, allocator, ir_filename, &output_writer.interface);

@@ -600,10 +600,14 @@ inline fn pop(name: []const u8) []const u8 {
     }
 }
 
-pub fn main() !void {
+pub fn main(
+    init: std.process.Init,
+) !void 
+{
     const allocator = std.heap.c_allocator;
+    const io = init.io;
 
-    var args = std.process.args();
+    var args = init.minimal.args.iterate();
     _ = args.next() orelse unreachable;
 
     const schema_path = args.next() orelse {
@@ -611,14 +615,14 @@ pub fn main() !void {
         return;
     };
 
-    const file = try std.fs.cwd().openFile(schema_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io,schema_path, .{});
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     const data = try std.posix.mmap(
         null,
         stat.size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .PRIVATE },
         file.handle,
         0,
@@ -631,8 +635,8 @@ pub fn main() !void {
     defer result.arena.deinit();
 
     var buffer: [4096]u8 = undefined;
-    const stdout = std.fs.File.stdout();
-    var stdout_writer = stdout.writer(&buffer);
+    const stdout = std.Io.File.stdout();
+    var stdout_writer = stdout.writer(io, &buffer);
 
     try result.schema.format(&stdout_writer.interface);
     try stdout_writer.interface.writeByte('\n');
