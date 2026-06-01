@@ -3,9 +3,39 @@
     .fingerprint = 0xaedfda510e7ad736,
     .minimum_zig_version = "0.16.0",
     .version = "0.2.1",
+
+    // Prebuilt `flatc` binaries published by the upstream FlatBuffers project,
+    // one per supported host platform. These are marked `lazy = true` so only
+    // the binary matching the host is ever fetched, and only when a build step
+    // actually needs to run `flatc` (see `flatc.zig` / `addFlatc`). This lets
+    // consumers compile `.fbs` schemas at build time without installing `flatc`.
+    .dependencies = .{
+        .@"flatc-linux-x86_64" = .{
+            .url = "https://github.com/google/flatbuffers/releases/download/v25.12.19-2026-02-06-03fffb2/Linux.flatc.binary.clang%2B%2B-18.zip",
+            .hash = "N-V-__8AAPCTcgChL2E-wKmbcmXypXiRgXJj_RJSmjWVi2Nt",
+            .lazy = true,
+        },
+        .@"flatc-macos-aarch64" = .{
+            .url = "https://github.com/google/flatbuffers/releases/download/v25.12.19-2026-02-06-03fffb2/Mac.flatc.binary.zip",
+            .hash = "N-V-__8AAAB4cADe-pklXtwpxbEgrhIFaVooILpGP0mDZnLH",
+            .lazy = true,
+        },
+        .@"flatc-macos-x86_64" = .{
+            .url = "https://github.com/google/flatbuffers/releases/download/v25.12.19-2026-02-06-03fffb2/MacIntel.flatc.binary.zip",
+            .hash = "N-V-__8AAAC5OgBDfM6HZLcuCzm1IixA2i0NlkylNhznN6UW",
+            .lazy = true,
+        },
+        .@"flatc-windows-x86_64" = .{
+            .url = "https://github.com/google/flatbuffers/releases/download/v25.12.19-2026-02-06-03fffb2/Windows.flatc.binary.zip",
+            .hash = "N-V-__8AAAC4NgARp2Ca5ODa3EarbLEi4eYS6zWFHQMK24CP",
+            .lazy = true,
+        },
+    },
+
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "flatc.zig",
         "src",
     },
 }

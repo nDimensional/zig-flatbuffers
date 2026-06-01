@@ -1,5 +1,16 @@
 const std = @import("std");
 
+/// Build-time `flatc` helpers, re-exported so that consumers depending on this
+/// package can use them from their own `build.zig` via `@import("flatbuffers")`.
+const flatc = @import("flatc.zig");
+pub const addFlatc = flatc.addFlatc;
+pub const addFlatcOwned = flatc.addFlatcOwned;
+pub const addSchemaModule = flatc.addSchemaModule;
+pub const addSchemaModuleFrom = flatc.addSchemaModuleFrom;
+pub const SchemaOptions = flatc.SchemaOptions;
+pub const flatcDependencyName = flatc.flatcDependencyName;
+pub const flatbuffers_version = flatc.flatbuffers_version;
+
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
@@ -28,19 +39,17 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const parse_exe = b.addExecutable(.{
+        .name = "zfbs-parse",
+        .root_module = parse,
+    });
+    b.installArtifact(parse_exe);
+
     {
-        const exe = b.addExecutable(.{
-            .name = "zfbs-parse",
-            .root_module = parse,
-        });
-
-        b.installArtifact(exe);
-
-        const run = b.addRunArtifact(exe);
+        const run = b.addRunArtifact(parse_exe);
         if (b.args) |args|
             run.addArgs(args);
 
-        b.installArtifact(exe);
         b.step("parse", "Parse a .bfbs schema into ZON IR").dependOn(&run.step);
     }
 
@@ -53,19 +62,17 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const generate_exe = b.addExecutable(.{
+        .name = "zfbs-generate",
+        .root_module = generate,
+    });
+    b.installArtifact(generate_exe);
+
     {
-        const exe = b.addExecutable(.{
-            .name = "zfbs-generate",
-            .root_module = generate,
-        });
-
-        b.installArtifact(exe);
-
-        const run = b.addRunArtifact(exe);
+        const run = b.addRunArtifact(generate_exe);
         if (b.args) |args|
             run.addArgs(args);
 
-        b.installArtifact(exe);
         b.step("generate", "Generate a decoder library for the ZON schema").dependOn(&run.step);
     }
 
@@ -137,4 +144,41 @@ pub fn build(b: *std.Build) void {
     const run_integration_tests = b.addRunArtifact(integration_tests);
 
     b.step("test-integration", "run the integration tests").dependOn(&run_integration_tests.step);
+
+    // `zig build flatc -- <args>`: run the FlatBuffers schema compiler using a
+    // prebuilt binary fetched as a build dependency (no local install required),
+    // falling back to `flatc` on PATH for hosts without a published prebuilt.
+    {
+        const flatc_step = b.step("flatc", "Run flatc, fetched as a build dependency");
+        if (flatc.addFlatc(b)) |run| {
+            if (b.args) |args| run.addArgs(args);
+            flatc_step.dependOn(&run.step);
+        }
+    }
+
+    // `zig build test-codegen`: dogfoods the fully managed build-time codegen
+    // path. It compiles `test/simple/simple.fbs` straight to an importable Zig
+    // module via `flatc` (fetched as a build dependency) -> `zfbs-parse` ->
+    // `zfbs-generate`, with nothing written to the source tree, then type-checks
+    // a small test that imports the generated decoder. This exercises the exact
+    // pipeline `addSchemaModule` runs for downstream consumers.
+    {
+        const codegen_step = b.step("test-codegen", "Managed build-time codegen smoke test");
+        if (flatc.addSchemaModuleFrom(b, b, flatbuffers, parse_exe, generate_exe, .{
+            .name = "simple",
+            .source = b.path("test/simple/simple.fbs"),
+        })) |simple_module| {
+            const codegen_test = b.addTest(.{
+                .root_module = b.createModule(.{
+                    .target = target,
+                    .optimize = optimize,
+                    .root_source_file = b.path("test/codegen.zig"),
+                    .imports = &.{
+                        .{ .name = "simple", .module = simple_module },
+                    },
+                }),
+            });
+            codegen_step.dependOn(&b.addRunArtifact(codegen_test).step);
+        }
+    }
 }

@@ -74,6 +74,8 @@ First, compile your schema to a binary `.bfbs` file using the `flatc` CLI (via [
 flatc -b --schema --bfbs-comments --bfbs-builtins myschema.fbs
 ```
 
+> You don't actually need `flatc` installed: from a checkout of this repo, `zig build flatc -- <args>` runs a prebuilt `flatc` fetched as a build dependency, e.g. `zig build flatc -- -b --schema --bfbs-comments --bfbs-builtins myschema.fbs`. See [Build-time codegen](#build-time-codegen) to skip the CLI entirely.
+
 Then clone the repo and generate a `.zon` IR for the schema.
 
 ```
@@ -232,11 +234,44 @@ const myschema = @import("myschema");
 
 ## Build-time codegen
 
-If you'd rather not check in the generated `.zon` and `.zig` files, the `parse` and `generate` modules are exposed as public modules and can be wired into your own `build.zig`. The example below runs the entire `.fbs` → `.bfbs` → `.zon` → `.zig` pipeline as part of the build graph, so the generated decoder is rebuilt automatically whenever a schema file changes. It assumes `flatc` is available on `PATH`.
+If you'd rather not check in the generated `.zon` and `.zig` files, the whole `.fbs` → `.bfbs` → `.zon` → `.zig` pipeline can run as part of your build graph, so the generated decoder is rebuilt automatically whenever a schema changes.
+
+**You do not need `flatc` installed.** This package declares the upstream prebuilt `flatc` binaries as lazy build dependencies and fetches the one matching your host on demand (Linux x86_64, macOS x86_64/aarch64, Windows x86_64). For host platforms without a published prebuilt — notably Linux aarch64 — it transparently falls back to a `flatc` found on `PATH`.
+
+### Managed: a schema as a module
+
+`build.zig` re-exports `addSchemaModule`, which runs the entire pipeline and hands back a ready-to-`@import` module:
 
 ```zig
+const flatbuffers = @import("flatbuffers"); // this package's build.zig
+
+pub fn build(b: *std.Build) void {
+    // ...
+    const flatbuffers_dep = b.dependency("flatbuffers", .{});
+
+    const myschema = flatbuffers.addSchemaModule(b, flatbuffers_dep, .{
+        .name = "myschema",
+        .source = b.path("schemas/myschema.fbs"),
+        // .includes = &.{ b.path("schemas/Other.fbs") }, // if you `include "..."`
+    }) orelse return; // null on the first pass while the prebuilt flatc is fetched
+
+    // `myschema` already imports `flatbuffers`; just add it to your compile step.
+    exe.root_module.addImport("myschema", myschema);
+    exe.root_module.addImport("flatbuffers", flatbuffers_dep.module("flatbuffers"));
+}
+```
+
+`addSchemaModule` returns `null` on the first build pass: requesting the lazy `flatc` dependency causes Zig to fetch it and re-run `build()`, at which point the call returns the module. Propagating the `null` with `orelse return` is the expected pattern.
+
+### Manual: wiring the steps yourself
+
+For finer control, the `parse` and `generate` modules are exposed as public modules, and `addFlatc` gives you a `flatc` Run step backed by the same fetched binary (use it instead of `b.addSystemCommand(&.{"flatc"})`):
+
+```zig
+const flatbuffers = @import("flatbuffers"); // this package's build.zig
+
 const flatbuffers_dep = b.dependency("flatbuffers", .{});
-const flatbuffers = flatbuffers_dep.module("flatbuffers");
+const flatbuffers_mod = flatbuffers_dep.module("flatbuffers");
 
 const zfbs_parse = b.addExecutable(.{
     .name = "zfbs-parse",
@@ -248,10 +283,10 @@ const zfbs_generate = b.addExecutable(.{
     .root_module = flatbuffers_dep.module("generate"),
 });
 
-// .fbs -> .bfbs (via flatc)
-const flatc_run = b.addSystemCommand(&.{
-    "flatc", "-b", "--schema", "--bfbs-comments", "--bfbs-builtins",
-});
+// .fbs -> .bfbs (via the fetched flatc; resolve against the dependency's
+// builder so the lazy flatc-* deps are found in *its* build.zig.zon)
+const flatc_run = flatbuffers.addFlatcOwned(b, flatbuffers_dep.builder).?;
+flatc_run.addArgs(&.{ "-b", "--schema", "--bfbs-comments", "--bfbs-builtins" });
 flatc_run.addArg("-o");
 const bfbs_dir = flatc_run.addOutputDirectoryArg("flatc-out");
 flatc_run.addFileArg(b.path("schemas/myschema.fbs"));
@@ -279,7 +314,7 @@ const zig_path = wf.addCopyFile(zig_file, "myschema.zig");
 
 const myschema = b.createModule(.{
     .root_source_file = zig_path,
-    .imports = &.{ .{ .name = "flatbuffers", .module = flatbuffers } },
+    .imports = &.{ .{ .name = "flatbuffers", .module = flatbuffers_mod } },
 });
 ```
 
