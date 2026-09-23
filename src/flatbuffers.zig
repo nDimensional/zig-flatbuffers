@@ -127,47 +127,6 @@ pub fn Vector(comptime T: type) type {
     };
 }
 
-// fn getVectorType(comptime T: type) types.Vector {
-//     const element = switch (@typeInfo(T)) {
-//         .bool => types.Vector.Element.bool,
-//         .int => |info| types.Vector.Element{
-//             .int = switch (info.bits) {
-//                 8 => if (info.signed) .i8 else .u8,
-//                 16 => if (info.signed) .i16 else .u16,
-//                 32 => if (info.signed) .i32 else .u32,
-//                 64 => if (info.signed) .i64 else .u64,
-//                 else => @compileError("invalid integer type"),
-//             },
-//         },
-//         .float => |info| types.Vector.Element{
-//             .float = switch (info.bits) {
-//                 32 => .f32,
-//                 64 => .f64,
-//             },
-//         },
-//         .pointer => types.Vector.Element.string,
-//         .@"enum" => types.Vector.Element{
-//             .@"enum" = .{ .name = @as(*const types.Enum, @field(T, "#type")).name },
-//         },
-//         .@"struct" => switch (@field(T, "#kind")) {
-//             Kind.Table => types.Vector.Element{
-//                 .table = .{ .name = @as(*const types.Table, @field(T, "#type")).name },
-//             },
-//             Kind.Vector => @compileError("cannot nest vectors"),
-//             Kind.Struct => types.Vector.Element{
-//                 .@"struct" = .{ .name = @as(*const types.Struct, @field(T, "#type")).name },
-//             },
-//             Kind.BitFlags => types.Vector.Element{
-//                 .bit_flags = .{ .name = @as(*const types.BitFlags, @field(T, "#type")).name },
-//             },
-//             Kind.Union, Kind.Enum => @compileError("invalid struct declaration"),
-//         },
-//         else => @compileError("invalid vector type"),
-//     };
-
-//     return types.Vector{ .element = element };
-// }
-
 fn getVectorElementSize(comptime T: type) u32 {
     return switch (@typeInfo(T)) {
         .int, .float, .bool => @sizeOf(T),
@@ -176,7 +135,7 @@ fn getVectorElementSize(comptime T: type) u32 {
         .@"struct" => switch (@field(T, "#kind")) {
             Kind.Table => @sizeOf(u32),
             Kind.Vector => @compileError("cannot nest vectors"),
-            Kind.Struct => getStructSize(T),
+            Kind.Struct => @as(*const types.Struct, @field(T, "#type")).bytesize,
             Kind.BitFlags => {
                 const bit_flags: *const types.BitFlags = @field(T, "#type");
                 return bit_flags.backing_integer.getSize();
@@ -186,40 +145,6 @@ fn getVectorElementSize(comptime T: type) u32 {
 
         else => @compileError("unexpected type"),
     };
-}
-
-fn getStructSize(comptime T: type) u32 {
-    switch (@typeInfo(T)) {
-        .int, .float, .bool => return @sizeOf(T),
-        .array => |info| return info.len * getStructSize(info.child),
-        .@"struct" => |info| {
-            var size: u32 = 0;
-            inline for (info.fields) |field| {
-                const field_alignment = getStructAlignment(field.type);
-                size = std.mem.alignForward(u32, size, field_alignment);
-                size += getStructSize(field.type);
-            }
-
-            return std.mem.alignForward(u32, size, getStructAlignment(T));
-        },
-        else => @compileError("invalid struct field type"),
-    }
-}
-
-fn getStructAlignment(comptime T: type) u32 {
-    switch (@typeInfo(T)) {
-        .int, .float, .bool => return @sizeOf(T),
-        .@"enum" => |info| return @sizeOf(info.tag_type),
-        .array => |info| return getStructAlignment(info.child),
-        .@"struct" => |info| {
-            var max_alignment: u32 = 0;
-            inline for (info.fields) |field|
-                max_alignment = @max(max_alignment, getStructAlignment(field.type));
-
-            return max_alignment;
-        },
-        else => @compileError("invalid struct field type"),
-    }
 }
 
 pub inline fn decodeScalarField(comptime T: type, comptime id: u16, table_ref: Ref, comptime default: T) T {
@@ -394,7 +319,6 @@ fn decodeStruct(comptime T: type, ref: Ref) T {
 fn getFieldRef(table_ref: Ref, comptime id: u16) ?Ref {
     const vtable_ref = table_ref.soffset();
     const vtable_size = vtable_ref.decodeScalar(u16);
-    // const object_size = vtable_ref.add(2).decodeScalar(u16);
 
     const vtable_entry_index = 2 + id;
     const vtable_entry_start = vtable_entry_index * @sizeOf(u16);
@@ -1027,13 +951,6 @@ pub const Builder = struct {
                                     const slot = self.blocks.items[block_index][block_offset..][0..vector_t.element_size];
                                     writeScalar(@TypeOf(item), slot, item);
                                 }
-
-                                // for (0..value.len) |i| {
-                                //     const j = value.len - i - 1;
-                                //     const item = value[j];
-                                //     const item_slot = try self.alloc(vector_t.element_size, vector_t.element_size);
-                                //     writeScalar(@TypeOf(item), item_slot, item);
-                                // }
                             },
                             .@"struct" => {
                                 try self.struct_buffer.resize(self.allocator, vector_t.element_size);
@@ -1048,13 +965,6 @@ pub const Builder = struct {
                                     const item_offset = self.offset + @as(i64, @intCast(vector_t.element_size * i));
                                     try self.writeBytes(self.struct_buffer.items, item_offset);
                                 }
-
-                                // for (0..value.len) |i| {
-                                //     const j = value.len - i - 1;
-                                //     const item = value[j];
-                                //     const item_slot = try self.alloc(vector_t.element_size, alignment);
-                                //     writeStruct(@TypeOf(item), item_slot, item);
-                                // }
                             },
                             .bit_flags => @compileError("not implemented"),
                             .string => {
@@ -1253,27 +1163,3 @@ pub const Builder = struct {
         return data;
     }
 };
-
-// test "builder" {
-//     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-//     defer std.debug.assert(gpa.deinit() == .ok);
-//     const allocator = gpa.allocator();
-
-//     var builder = try Builder.init(allocator);
-//     defer builder.deinit();
-
-//     const b = .{2} ** 119;
-//     const b_ref = try builder.writeString(&b);
-//     std.log.warn("got b_ref: {any}", .{b_ref});
-
-//     const a = .{1} ** 12;
-//     const a_ref = try builder.writeString(&a);
-//     std.log.warn("got a_ref: {any}", .{a_ref});
-
-//     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
-//     for (0..builder.blocks.items.len) |i| {
-//         const block = builder.blocks.items[i];
-//         std.log.warn("- {d} {*}", .{ i, block.ptr });
-//         std.log.warn("  {x}", .{block});
-//     }
-// }

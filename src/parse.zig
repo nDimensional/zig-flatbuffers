@@ -640,12 +640,4 @@ pub fn main(
     try result.schema.format(&stdout_writer.interface);
     try stdout_writer.interface.writeByte('\n');
     try stdout_writer.interface.flush();
-
-    // var builder = flatbuffers.Builder.init(allocator);
-    // defer builder.deinit();
-
-    // try builder.writeTable(reflection.Object, .{
-    //     .name = "wow",
-    //     .fields = &.{},
-    // });
 }

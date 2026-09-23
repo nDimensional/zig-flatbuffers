@@ -427,13 +427,6 @@ pub fn writeSchema(self: types.Schema, allocator: std.mem.Allocator, ir_filename
     }
 
     try writeNamespace(self, null, writer);
-
-    // if (self.root.file_ident()) |file_identifier|
-    //     try writer.print("pub const file_identifier = \"{s}\";\n", .{file_identifier});
-
-    // if (self.root.file_ext()) |file_extension|
-    //     try writer.print("pub const file_extension = \"{s}\";\n", .{file_extension});
-
 }
 
 fn writeNamespace(schema: types.Schema, namespace: ?[]const u8, writer: *std.Io.Writer) !void {
@@ -512,16 +505,10 @@ pub fn main(
         .{ .ignore_unknown_fields = true },
     );
 
-    // var parser = try Parser.init(std.heap.c_allocator, @alignCast(data));
-    // defer parser.deinit();
-
-    // const result = try parser.parse(s
-
     var buffer: [4096]u8 = undefined;
     const output = std.Io.File.stdout();
     var output_writer = output.writer(io, &buffer);
 
-    // try writeSchema(result.schema, std.heap.c_allocator, &output_writer.interface);
     try writeSchema(schema, allocator, ir_filename, &output_writer.interface);
 
     try output_writer.interface.flush();

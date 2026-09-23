@@ -1,0 +1,20 @@
+namespace Structs;
+
+struct SegmentSpec {
+  offset:ulong;
+  length:uint;
+  alignment_exponent:ubyte;
+  _compression:ubyte;
+  _encryption:ushort;
+}
+
+struct Aligned (force_align: 16) {
+  value:int;
+}
+
+table Root {
+  segments:[SegmentSpec];
+  aligned:[Aligned];
+}
+
+root_type Root;

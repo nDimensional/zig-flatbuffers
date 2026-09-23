@@ -5,6 +5,7 @@ const reflection = @import("reflection").reflection;
 
 const simple = @import("simple/simple.zig").Eclectic;
 const arrow = @import("arrow/arrow.zig").org.apache.arrow.flatbuf;
+const structs = @import("structs/structs.zig").Structs;
 
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {
     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
@@ -644,6 +645,54 @@ test "monster builder with empty vectors" {
 
     const path = monster.path() orelse return error.Invalid;
     try std.testing.expectEqual(0, path.len());
+}
+
+test "vectors of structs use schema bytesize as stride" {
+    var gpa = std.heap.DebugAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    var segments: [64]structs.SegmentSpec = undefined;
+    for (&segments, 0..) |*segment, i| {
+        segment.* = .{
+            .offset = 0x1000 + i * 0x100,
+            .length = 0x100 + @as(u32, @intCast(i)),
+            .alignment_exponent = 3,
+            ._compression = 1,
+            ._encryption = 2,
+        };
+    }
+
+    var aligned: [8]structs.Aligned = undefined;
+    for (&aligned, 0..) |*item, i|
+        item.* = .{ .value = @intCast(i) };
+
+    {
+        const ref = try builder.writeTable(structs.Root, .{
+            .segments = &segments,
+            .aligned = &aligned,
+        });
+
+        try builder.writeRoot(structs.Root, ref);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const root = try flatbuffers.decodeRoot(structs.Root, result);
+
+    const decoded_segments = root.segments() orelse return error.Invalid;
+    try std.testing.expectEqual(segments.len, decoded_segments.len());
+    for (segments, 0..) |segment, i|
+        try std.testing.expectEqual(segment, decoded_segments.get(i));
+
+    const decoded_aligned = root.aligned() orelse return error.Invalid;
+    try std.testing.expectEqual(aligned.len, decoded_aligned.len());
+    for (aligned, 0..) |item, i|
+        try std.testing.expectEqual(item, decoded_aligned.get(i));
 }
 
 test "arrow Footer with complex Schema" {

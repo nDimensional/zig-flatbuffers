@@ -1,0 +1,56 @@
+.{
+    .tables = .{.{ .name = "Structs.Root", .fields = .{ .{ .name = "segments", .type = .{ .vector = .{
+        .element_size = 16,
+        .element = .{ .@"struct" = .{ .name = "Structs.SegmentSpec" } },
+        .minalign = 8,
+    } } }, .{ .name = "aligned", .type = .{ .vector = .{
+        .element_size = 16,
+        .element = .{ .@"struct" = .{ .name = "Structs.Aligned" } },
+        .minalign = 16,
+    } } } } }},
+    .enums = .{},
+    .unions = .{},
+    .structs = .{ .{
+        .name = "Structs.Aligned",
+        .fields = .{.{
+            .name = "value",
+            .type = .{ .int = .i32 },
+            .offset = 0,
+        }},
+        .bytesize = 16,
+        .minalign = 16,
+    }, .{
+        .name = "Structs.SegmentSpec",
+        .fields = .{
+            .{
+                .name = "_compression",
+                .type = .{ .int = .u8 },
+                .offset = 13,
+            },
+            .{
+                .name = "_encryption",
+                .type = .{ .int = .u16 },
+                .offset = 14,
+            },
+            .{
+                .name = "alignment_exponent",
+                .type = .{ .int = .u8 },
+                .offset = 12,
+            },
+            .{
+                .name = "length",
+                .type = .{ .int = .u32 },
+                .offset = 8,
+            },
+            .{
+                .name = "offset",
+                .type = .{ .int = .u64 },
+                .offset = 0,
+            },
+        },
+        .bytesize = 16,
+        .minalign = 8,
+    } },
+    .bit_flags = .{},
+    .root_table = .{ .name = "Structs.Root" },
+}
