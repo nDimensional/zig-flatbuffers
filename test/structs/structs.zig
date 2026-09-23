@@ -16,11 +16,11 @@ pub const Structs = struct {
         pub const @"#kind" = flatbuffers.Kind.Struct;
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".structs[1];
+        offset: u64,
+        length: u32,
+        alignment_exponent: u8,
         _compression: u8,
         _encryption: u16,
-        alignment_exponent: u8,
-        length: u32,
-        offset: u64,
     };
 
     pub const Root = struct {

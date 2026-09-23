@@ -177,13 +177,13 @@ pub const org = struct {
                     pub const @"#kind" = flatbuffers.Kind.Struct;
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".structs[0];
+                    /// Index to the start of the RecordBlock (note this is past the Message header)
+                    offset: i64,
+                    /// Length of the metadata
+                    metaDataLength: i32,
                     /// Length of the data (this is aligned so there can be a gap between this and
                     /// the metadata).
                     bodyLength: i64,
-                    /// Length of the metadata
-                    metaDataLength: i32,
-                    /// Index to the start of the RecordBlock (note this is past the Message header)
-                    offset: i64,
                 };
 
                 /// ----------------------------------------------------------------------
@@ -192,15 +192,15 @@ pub const org = struct {
                     pub const @"#kind" = flatbuffers.Kind.Struct;
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".structs[1];
+                    /// The relative offset into the shared memory page where the bytes for this
+                    /// buffer starts
+                    offset: i64,
                     /// The absolute length (in bytes) of the memory buffer. The memory is found
                     /// from offset (inclusive) to offset + length (non-inclusive). When building
                     /// messages using the encapsulated IPC message, padding bytes may be written
                     /// after a buffer, but such padding bytes do not need to be accounted for in
                     /// the size here.
                     length: i64,
-                    /// The relative offset into the shared memory page where the bytes for this
-                    /// buffer starts
-                    offset: i64,
                 };
 
                 /// ----------------------------------------------------------------------

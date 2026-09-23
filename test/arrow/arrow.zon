@@ -1193,10 +1193,10 @@
             .name = "org.apache.arrow.flatbuf.Block",
             .fields = .{
                 .{
-                    .name = "bodyLength",
+                    .name = "offset",
                     .type = .{ .int = .i64 },
-                    .offset = 16,
-                    .documentation = .{ " Length of the data (this is aligned so there can be a gap between this and", " the metadata)." },
+                    .offset = 0,
+                    .documentation = .{" Index to the start of the RecordBlock (note this is past the Message header)"},
                 },
                 .{
                     .name = "metaDataLength",
@@ -1205,10 +1205,10 @@
                     .documentation = .{" Length of the metadata"},
                 },
                 .{
-                    .name = "offset",
+                    .name = "bodyLength",
                     .type = .{ .int = .i64 },
-                    .offset = 0,
-                    .documentation = .{" Index to the start of the RecordBlock (note this is past the Message header)"},
+                    .offset = 16,
+                    .documentation = .{ " Length of the data (this is aligned so there can be a gap between this and", " the metadata)." },
                 },
             },
             .bytesize = 24,
@@ -1217,6 +1217,11 @@
         .{
             .name = "org.apache.arrow.flatbuf.Buffer",
             .fields = .{ .{
+                .name = "offset",
+                .type = .{ .int = .i64 },
+                .offset = 0,
+                .documentation = .{ " The relative offset into the shared memory page where the bytes for this", " buffer starts" },
+            }, .{
                 .name = "length",
                 .type = .{ .int = .i64 },
                 .offset = 8,
@@ -1227,11 +1232,6 @@
                     " after a buffer, but such padding bytes do not need to be accounted for in",
                     " the size here.",
                 },
-            }, .{
-                .name = "offset",
-                .type = .{ .int = .i64 },
-                .offset = 0,
-                .documentation = .{ " The relative offset into the shared memory page where the bytes for this", " buffer starts" },
             } },
             .bytesize = 16,
             .minalign = 8,

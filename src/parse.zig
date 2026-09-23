@@ -261,6 +261,12 @@ pub const Parser = struct {
                         field.documentation = try copyDocumentation(arena_allocator, documentation);
                 }
 
+                std.mem.sort(types.Struct.Field, fields, {}, struct {
+                    fn lessThan(_: void, a: types.Struct.Field, b: types.Struct.Field) bool {
+                        return a.offset < b.offset;
+                    }
+                }.lessThan);
+
                 const bytesize = object_ref.bytesize();
                 if (bytesize < 0 or bytesize > std.math.maxInt(u16))
                     return error.InvalidStruct;

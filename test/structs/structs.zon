@@ -23,6 +23,21 @@
         .name = "Structs.SegmentSpec",
         .fields = .{
             .{
+                .name = "offset",
+                .type = .{ .int = .u64 },
+                .offset = 0,
+            },
+            .{
+                .name = "length",
+                .type = .{ .int = .u32 },
+                .offset = 8,
+            },
+            .{
+                .name = "alignment_exponent",
+                .type = .{ .int = .u8 },
+                .offset = 12,
+            },
+            .{
                 .name = "_compression",
                 .type = .{ .int = .u8 },
                 .offset = 13,
@@ -31,21 +46,6 @@
                 .name = "_encryption",
                 .type = .{ .int = .u16 },
                 .offset = 14,
-            },
-            .{
-                .name = "alignment_exponent",
-                .type = .{ .int = .u8 },
-                .offset = 12,
-            },
-            .{
-                .name = "length",
-                .type = .{ .int = .u32 },
-                .offset = 8,
-            },
-            .{
-                .name = "offset",
-                .type = .{ .int = .u64 },
-                .offset = 0,
             },
         },
         .bytesize = 16,
