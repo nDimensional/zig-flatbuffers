@@ -328,8 +328,8 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[2];
                     pub const @"#constructor" = struct {
-                        codec: org.apache.arrow.flatbuf.CompressionType = @enumFromInt(0),
-                        method: org.apache.arrow.flatbuf.BodyCompressionMethod = @enumFromInt(0),
+                        codec: org.apache.arrow.flatbuf.CompressionType = @fromBackingInt(0),
+                        method: org.apache.arrow.flatbuf.BodyCompressionMethod = @fromBackingInt(0),
                     };
 
                     @"#ref": flatbuffers.Ref,
@@ -337,12 +337,12 @@ pub const org = struct {
                     /// Compressor library.
                     /// For LZ4_FRAME, each compressed buffer must consist of a single frame.
                     pub fn codec(@"#self": BodyCompression) org.apache.arrow.flatbuf.CompressionType {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.CompressionType, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.CompressionType, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     /// Indicates the way the record batch body was compressed
                     pub fn method(@"#self": BodyCompression) org.apache.arrow.flatbuf.BodyCompressionMethod {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.BodyCompressionMethod, 1, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.BodyCompressionMethod, 1, @"#self".@"#ref", @fromBackingInt(0));
                     }
                 };
 
@@ -366,13 +366,13 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[4];
                     pub const @"#constructor" = struct {
-                        unit: org.apache.arrow.flatbuf.DateUnit = @enumFromInt(1),
+                        unit: org.apache.arrow.flatbuf.DateUnit = @fromBackingInt(1),
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn unit(@"#self": Date) org.apache.arrow.flatbuf.DateUnit {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.DateUnit, 0, @"#self".@"#ref", @enumFromInt(1));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.DateUnit, 0, @"#self".@"#ref", @fromBackingInt(1));
                     }
                 };
 
@@ -451,7 +451,7 @@ pub const org = struct {
                         id: i64 = 0,
                         indexType: ?org.apache.arrow.flatbuf.Int = null,
                         isOrdered: bool = false,
-                        dictionaryKind: org.apache.arrow.flatbuf.DictionaryKind = @enumFromInt(0),
+                        dictionaryKind: org.apache.arrow.flatbuf.DictionaryKind = @fromBackingInt(0),
                     };
 
                     @"#ref": flatbuffers.Ref,
@@ -481,7 +481,7 @@ pub const org = struct {
                     }
 
                     pub fn dictionaryKind(@"#self": DictionaryEncoding) org.apache.arrow.flatbuf.DictionaryKind {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.DictionaryKind, 3, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.DictionaryKind, 3, @"#self".@"#ref", @fromBackingInt(0));
                     }
                 };
 
@@ -490,13 +490,13 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[8];
                     pub const @"#constructor" = struct {
-                        unit: org.apache.arrow.flatbuf.TimeUnit = @enumFromInt(1),
+                        unit: org.apache.arrow.flatbuf.TimeUnit = @fromBackingInt(1),
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn unit(@"#self": Duration) org.apache.arrow.flatbuf.TimeUnit {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @enumFromInt(1));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @fromBackingInt(1));
                     }
                 };
 
@@ -586,13 +586,13 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[12];
                     pub const @"#constructor" = struct {
-                        precision: org.apache.arrow.flatbuf.Precision = @enumFromInt(0),
+                        precision: org.apache.arrow.flatbuf.Precision = @fromBackingInt(0),
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn precision(@"#self": FloatingPoint) org.apache.arrow.flatbuf.Precision {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.Precision, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.Precision, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
                 };
 
@@ -604,7 +604,7 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[13];
                     pub const @"#constructor" = struct {
-                        version: org.apache.arrow.flatbuf.MetadataVersion = @enumFromInt(0),
+                        version: org.apache.arrow.flatbuf.MetadataVersion = @fromBackingInt(0),
                         schema: ?org.apache.arrow.flatbuf.Schema = null,
                         dictionaries: ?[]const org.apache.arrow.flatbuf.Block = null,
                         recordBatches: ?[]const org.apache.arrow.flatbuf.Block = null,
@@ -614,7 +614,7 @@ pub const org = struct {
                     @"#ref": flatbuffers.Ref,
 
                     pub fn version(@"#self": Footer) org.apache.arrow.flatbuf.MetadataVersion {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.MetadataVersion, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.MetadataVersion, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     pub fn schema(@"#self": Footer) ?org.apache.arrow.flatbuf.Schema {
@@ -660,13 +660,13 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[15];
                     pub const @"#constructor" = struct {
-                        unit: org.apache.arrow.flatbuf.IntervalUnit = @enumFromInt(0),
+                        unit: org.apache.arrow.flatbuf.IntervalUnit = @fromBackingInt(0),
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn unit(@"#self": Interval) org.apache.arrow.flatbuf.IntervalUnit {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.IntervalUnit, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.IntervalUnit, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
                 };
 
@@ -804,7 +804,7 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[24];
                     pub const @"#constructor" = struct {
-                        version: org.apache.arrow.flatbuf.MetadataVersion = @enumFromInt(0),
+                        version: org.apache.arrow.flatbuf.MetadataVersion = @fromBackingInt(0),
                         header_type: org.apache.arrow.flatbuf.MessageHeader = .NONE,
                         bodyLength: i64 = 0,
                         custom_metadata: ?[]const org.apache.arrow.flatbuf.KeyValue = null,
@@ -813,7 +813,7 @@ pub const org = struct {
                     @"#ref": flatbuffers.Ref,
 
                     pub fn version(@"#self": Message) org.apache.arrow.flatbuf.MetadataVersion {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.MetadataVersion, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.MetadataVersion, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     pub fn header_type(@"#self": Message) org.apache.arrow.flatbuf.MessageHeader {
@@ -922,7 +922,7 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[28];
                     pub const @"#constructor" = struct {
-                        endianness: org.apache.arrow.flatbuf.Endianness = @enumFromInt(0),
+                        endianness: org.apache.arrow.flatbuf.Endianness = @fromBackingInt(0),
                         fields: ?[]const org.apache.arrow.flatbuf.Field = null,
                         custom_metadata: ?[]const org.apache.arrow.flatbuf.KeyValue = null,
                         features: ?[]const i64 = null,
@@ -934,7 +934,7 @@ pub const org = struct {
                     /// it is Little Endian by default
                     /// if endianness doesn't match the underlying system then the vectors need to be converted
                     pub fn endianness(@"#self": Schema) org.apache.arrow.flatbuf.Endianness {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.Endianness, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.Endianness, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     pub fn fields(@"#self": Schema) ?flatbuffers.Vector(org.apache.arrow.flatbuf.Field) {
@@ -957,7 +957,7 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[29];
                     pub const @"#constructor" = struct {
-                        compressedAxis: org.apache.arrow.flatbuf.SparseMatrixCompressedAxis = @enumFromInt(0),
+                        compressedAxis: org.apache.arrow.flatbuf.SparseMatrixCompressedAxis = @fromBackingInt(0),
                         indptrType: org.apache.arrow.flatbuf.Int,
                         indptrBuffer: org.apache.arrow.flatbuf.Buffer,
                         indicesType: org.apache.arrow.flatbuf.Int,
@@ -968,7 +968,7 @@ pub const org = struct {
 
                     /// Which axis, row or column, is compressed
                     pub fn compressedAxis(@"#self": SparseMatrixIndexCSX) org.apache.arrow.flatbuf.SparseMatrixCompressedAxis {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.SparseMatrixCompressedAxis, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.SparseMatrixCompressedAxis, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     /// The type of values in indptrBuffer
@@ -1335,14 +1335,14 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[36];
                     pub const @"#constructor" = struct {
-                        unit: org.apache.arrow.flatbuf.TimeUnit = @enumFromInt(1),
+                        unit: org.apache.arrow.flatbuf.TimeUnit = @fromBackingInt(1),
                         bitWidth: i32 = 32,
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn unit(@"#self": Time) org.apache.arrow.flatbuf.TimeUnit {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @enumFromInt(1));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @fromBackingInt(1));
                     }
 
                     pub fn bitWidth(@"#self": Time) i32 {
@@ -1460,14 +1460,14 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[37];
                     pub const @"#constructor" = struct {
-                        unit: org.apache.arrow.flatbuf.TimeUnit = @enumFromInt(0),
+                        unit: org.apache.arrow.flatbuf.TimeUnit = @fromBackingInt(0),
                         timezone: ?[]const u8 = null,
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn unit(@"#self": Timestamp) org.apache.arrow.flatbuf.TimeUnit {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.TimeUnit, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     /// The timezone is an optional string indicating the name of a timezone,
@@ -1494,14 +1494,14 @@ pub const org = struct {
                     pub const @"#root" = &@"#schema";
                     pub const @"#type" = &@"#schema".tables[38];
                     pub const @"#constructor" = struct {
-                        mode: org.apache.arrow.flatbuf.UnionMode = @enumFromInt(0),
+                        mode: org.apache.arrow.flatbuf.UnionMode = @fromBackingInt(0),
                         typeIds: ?[]const i32 = null,
                     };
 
                     @"#ref": flatbuffers.Ref,
 
                     pub fn mode(@"#self": Union) org.apache.arrow.flatbuf.UnionMode {
-                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.UnionMode, 0, @"#self".@"#ref", @enumFromInt(0));
+                        return flatbuffers.decodeEnumField(org.apache.arrow.flatbuf.UnionMode, 0, @"#self".@"#ref", @fromBackingInt(0));
                     }
 
                     pub fn typeIds(@"#self": Union) ?flatbuffers.Vector(i32) {

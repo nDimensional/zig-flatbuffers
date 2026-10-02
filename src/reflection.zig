@@ -447,8 +447,8 @@ pub const reflection = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[9];
         pub const @"#constructor" = struct {
-            base_type: reflection.BaseType = @enumFromInt(0),
-            element: reflection.BaseType = @enumFromInt(0),
+            base_type: reflection.BaseType = @fromBackingInt(0),
+            element: reflection.BaseType = @fromBackingInt(0),
             index: i32 = -1,
             fixed_length: u16 = 0,
             base_size: u32 = 4,
@@ -458,11 +458,11 @@ pub const reflection = struct {
         @"#ref": flatbuffers.Ref,
 
         pub fn base_type(@"#self": Type) reflection.BaseType {
-            return flatbuffers.decodeEnumField(reflection.BaseType, 0, @"#self".@"#ref", @enumFromInt(0));
+            return flatbuffers.decodeEnumField(reflection.BaseType, 0, @"#self".@"#ref", @fromBackingInt(0));
         }
 
         pub fn element(@"#self": Type) reflection.BaseType {
-            return flatbuffers.decodeEnumField(reflection.BaseType, 1, @"#self".@"#ref", @enumFromInt(0));
+            return flatbuffers.decodeEnumField(reflection.BaseType, 1, @"#self".@"#ref", @fromBackingInt(0));
         }
 
         pub fn index(@"#self": Type) i32 {

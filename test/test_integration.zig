@@ -6,13 +6,8 @@ const simple = @import("simple/simple.zig").Eclectic;
 const monster = @import("monster/monster.zig").MyGame.Sample;
 
 // C FFI imports for flatcc helpers (avoids alignment issues with Zig's C translation)
-const simple_c = @cImport({
-    @cInclude("simple/flatcc_helpers.h");
-});
-
-const monster_c = @cImport({
-    @cInclude("monster/flatcc_helpers.h");
-});
+const simple_c = @import("simple_c");
+const monster_c = @import("monster_c");
 
 test "simple - flatcc round trip through helpers" {
     // Test building with C and reading with C

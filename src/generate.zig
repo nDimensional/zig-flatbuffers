@@ -104,7 +104,7 @@ const TableConstructor = struct {
                 .bool => try writer.print("bool = {}", .{field.default_integer != 0}),
                 .float => |float| try writer.print("{s} = {d}", .{ @tagName(float), field.default_real }),
                 .int => |int| try writer.print("{s} = {d}", .{ @tagName(int), field.default_integer }),
-                .@"enum" => |enum_ref| try writer.print("{f} = @enumFromInt({d})", .{ esc(enum_ref.name), field.default_integer }),
+                .@"enum" => |enum_ref| try writer.print("{f} = @fromBackingInt({d})", .{ esc(enum_ref.name), field.default_integer }),
                 .@"struct" => |struct_ref| {
                     if (field.required) {
                         try writer.print("{f}", .{esc(struct_ref.name)});
@@ -210,7 +210,7 @@ pub fn writeTable(self: types.Table, index: usize, writer: *std.Io.Writer) !void
             , .{ @tagName(float), @tagName(float), field_id, field.default_real }),
             .@"enum" => |enum_t| try writer.print(
                 \\ {f} {{
-                \\        return flatbuffers.decodeEnumField({f}, {d}, @"#self".@"#ref", @enumFromInt({d}));
+                \\        return flatbuffers.decodeEnumField({f}, {d}, @"#self".@"#ref", @fromBackingInt({d}));
                 \\    }}
             , .{ esc(enum_t.name), esc(enum_t.name), field_id, field.default_integer }),
             .bit_flags => |bit_flags| try writer.print(
@@ -495,15 +495,22 @@ pub fn main(
     );
 
     const allocator = init.arena.allocator();
-    const copy = try allocator.dupeZ(u8, data);
+    const copy = try allocator.dupeSentinel(u8, data, 0);
     defer allocator.free(copy);
-    const schema = try std.zon.parse.fromSliceAlloc(
-        flatbuffers.types.Schema,
-        allocator,
-        copy,
-        null,
-        .{ .ignore_unknown_fields = true },
-    );
+    var diagnostics: std.zon.parse.Diagnostics = undefined;
+    const schema = std.zon.parse.fromSlice(flatbuffers.types.Schema, .{
+        .gpa = init.gpa,
+        .arena = allocator,
+        .source = copy,
+        .diagnostics = &diagnostics,
+        .ignore_unknown_fields = true,
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        error.ParseZon => {
+            diagnostics.log(ir_path);
+            return err;
+        },
+    };
 
     var buffer: [4096]u8 = undefined;
     const output = std.Io.File.stdout();

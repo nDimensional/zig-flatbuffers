@@ -37,8 +37,7 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(exe);
 
         const run = b.addRunArtifact(exe);
-        if (b.args) |args|
-            run.addArgs(args);
+        run.addPassthruArgs();
 
         b.installArtifact(exe);
         b.step("parse", "Parse a .bfbs schema into ZON IR").dependOn(&run.step);
@@ -62,8 +61,7 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(exe);
 
         const run = b.addRunArtifact(exe);
-        if (b.args) |args|
-            run.addArgs(args);
+        run.addPassthruArgs();
 
         b.installArtifact(exe);
         b.step("generate", "Generate a decoder library for the ZON schema").dependOn(&run.step);
@@ -86,6 +84,18 @@ pub fn build(b: *std.Build) void {
     b.step("test", "run the tests").dependOn(&run_tests.step);
 
     // Integration tests with flatcc
+    const simple_c = b.addTranslateC(.{
+        .root_source_file = b.path("test/simple/flatcc_helpers.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const monster_c = b.addTranslateC(.{
+        .root_source_file = b.path("test/monster/flatcc_helpers.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const integration_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -93,6 +103,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "flatbuffers", .module = flatbuffers },
             .{ .name = "reflection", .module = reflection },
+            .{ .name = "simple_c", .module = simple_c.createModule() },
+            .{ .name = "monster_c", .module = monster_c.createModule() },
         },
     });
 

@@ -44,7 +44,7 @@ pub const MyGame = struct {
                 hp: i16 = 100,
                 name: ?[]const u8 = null,
                 inventory: ?[]const u8 = null,
-                color: MyGame.Sample.Color = @enumFromInt(2),
+                color: MyGame.Sample.Color = @fromBackingInt(2),
                 weapons: ?[]const MyGame.Sample.Weapon = null,
                 equipped_type: MyGame.Sample.Equipment = .NONE,
                 path: ?[]const MyGame.Sample.Vec3 = null,
@@ -73,7 +73,7 @@ pub const MyGame = struct {
             }
 
             pub fn color(@"#self": Monster) MyGame.Sample.Color {
-                return flatbuffers.decodeEnumField(MyGame.Sample.Color, 6, @"#self".@"#ref", @enumFromInt(2));
+                return flatbuffers.decodeEnumField(MyGame.Sample.Color, 6, @"#self".@"#ref", @fromBackingInt(2));
             }
 
             pub fn weapons(@"#self": Monster) ?flatbuffers.Vector(MyGame.Sample.Weapon) {

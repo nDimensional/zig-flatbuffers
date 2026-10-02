@@ -58,7 +58,7 @@ pub const Ref = struct {
             else => @compileError("invalid enum type"),
         };
 
-        return @enumFromInt(ref.decodeScalar(info.tag_type));
+        return @fromBackingInt(ref.decodeScalar(info.tag_type));
     }
 
     pub inline fn format(self: Ref, writer: *std.Io.Writer) !void {
@@ -203,9 +203,9 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
 
     const ref_ref = ref_field_ref.uoffset();
 
-    inline for (tag_info.fields) |tag_field| {
-        if (tag_field.value > 0 and tag_field.value == tag_value) {
-            return @unionInit(T, tag_field.name, .{ .@"#ref" = ref_ref });
+    inline for (tag_info.field_names, tag_info.field_values) |tag_name, tag_field_value| {
+        if (tag_field_value > 0 and tag_field_value == tag_value) {
+            return @unionInit(T, tag_name, .{ .@"#ref" = ref_ref });
         }
     }
 
@@ -235,7 +235,7 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
 
     const bit_flags: *const types.BitFlags = comptime @field(T, "#type");
 
-    if (bit_flags.fields.len != info.fields.len)
+    if (bit_flags.fields.len != info.field_names.len)
         @compileError("invalid bit flag fields");
 
     const value: u64 = @intCast(switch (bit_flags.backing_integer) {
@@ -247,11 +247,11 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
     });
 
     var result: T = .{};
-    inline for (info.fields, bit_flags.fields) |field, flag| {
-        if (field.type != bool)
+    inline for (info.field_names, info.field_types, bit_flags.fields) |field_name, field_type, flag| {
+        if (field_type != bool)
             @compileError("invalid bit flag fields");
 
-        @field(result, field.name) = value & flag.value != 0;
+        @field(result, field_name) = value & flag.value != 0;
     }
 
     return result;
@@ -675,7 +675,7 @@ fn writeScalar(comptime T: type, slot: *[@sizeOf(T)]u8, value: T) void {
             64 => std.mem.writeInt(u64, slot, @bitCast(value), .little),
             else => @compileError("invalid float type"),
         },
-        .@"enum" => |enum_t| std.mem.writeInt(enum_t.tag_type, slot, @intFromEnum(value), .little),
+        .@"enum" => |enum_t| std.mem.writeInt(enum_t.tag_type, slot, @backingInt(value), .little),
         else => @compileError("invalid scalar type"),
     }
 }
@@ -884,17 +884,17 @@ pub const Builder = struct {
     }
 
     fn getUnionRef(comptime T: type, value: T) ?struct { tag: u8, ref: Ref } {
-        const fields = switch (@typeInfo(T)) {
-            .@"union" => |info| info.fields,
+        const field_names = switch (@typeInfo(T)) {
+            .@"union" => |info| info.field_names,
             else => @compileError("expected union type"),
         };
 
         if (value == .NONE)
             return null;
 
-        inline for (fields[1..], 1..) |field, tag| {
-            if (std.mem.eql(u8, field.name, @tagName(value))) {
-                const active_field = @field(value, field.name);
+        inline for (field_names[1..], 1..) |field_name, tag| {
+            if (std.mem.eql(u8, field_name, @tagName(value))) {
+                const active_field = @field(value, field_name);
                 return .{ .tag = tag, .ref = @field(active_field, "#ref") };
             }
         }

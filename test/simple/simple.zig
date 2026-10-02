@@ -19,7 +19,7 @@ pub const Eclectic = struct {
         pub const @"#root" = &@"#schema";
         pub const @"#type" = &@"#schema".tables[0];
         pub const @"#constructor" = struct {
-            meal: Eclectic.Fruit = @enumFromInt(-1),
+            meal: Eclectic.Fruit = @fromBackingInt(-1),
             say: ?[]const u8 = null,
             height: i16 = 0,
         };
@@ -27,7 +27,7 @@ pub const Eclectic = struct {
         @"#ref": flatbuffers.Ref,
 
         pub fn meal(@"#self": FooBar) Eclectic.Fruit {
-            return flatbuffers.decodeEnumField(Eclectic.Fruit, 0, @"#self".@"#ref", @enumFromInt(-1));
+            return flatbuffers.decodeEnumField(Eclectic.Fruit, 0, @"#self".@"#ref", @fromBackingInt(-1));
         }
 
         pub fn say(@"#self": FooBar) ?flatbuffers.String {
