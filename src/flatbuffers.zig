@@ -239,10 +239,10 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
         @compileError("invalid bit flag fields");
 
     const value: u64 = @intCast(switch (bit_flags.backing_integer) {
-        .u8 => std.mem.readInt(u8, ref.ptr[0..ref.len][0..@sizeOf(u8)], .little),
-        .u16 => std.mem.readInt(u16, ref.ptr[0..ref.len][0..@sizeOf(u16)], .little),
-        .u32 => std.mem.readInt(u32, ref.ptr[0..ref.len][0..@sizeOf(u32)], .little),
-        .u64 => std.mem.readInt(u64, ref.ptr[0..ref.len][0..@sizeOf(u64)], .little),
+        .u8 => ref.decodeScalar(u8),
+        .u16 => ref.decodeScalar(u16),
+        .u32 => ref.decodeScalar(u32),
+        .u64 => ref.decodeScalar(u64),
         else => @compileError("invalid bit flags backing integer"),
     });
 

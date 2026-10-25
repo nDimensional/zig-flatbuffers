@@ -178,6 +178,33 @@ test "reflection builder" {
     try std.testing.expectEqual(-1, type_ref.index());
 }
 
+test "bit flags field decodes from its own offset" {
+    var gpa = std.heap.DebugAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    const features: reflection.AdvancedFeatures = .{ .AdvancedUnionFeatures = true, .OptionalScalars = true };
+
+    {
+        const schema = try builder.writeTable(reflection.Schema, .{
+            .objects = &.{},
+            .enums = &.{},
+            .advanced_features = features,
+        });
+
+        try builder.writeRoot(reflection.Schema, schema);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const schema = try flatbuffers.decodeRoot(reflection.Schema, result);
+    try std.testing.expectEqual(features, schema.advanced_features());
+}
+
 test "reflection builder with complex nested schema" {
     var gpa = std.heap.DebugAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
