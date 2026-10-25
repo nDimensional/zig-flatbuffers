@@ -424,7 +424,7 @@
                     .name = "features",
                     .type = .{ .vector = .{
                         .element_size = 8,
-                        .element = .{ .int = .i64 },
+                        .element = .{ .@"enum" = .{ .name = "org.apache.arrow.flatbuf.Feature" } },
                         .minalign = 8,
                     } },
                     .documentation = .{" Features used in the stream/file."},

@@ -780,7 +780,7 @@ test "arrow Footer with complex Schema" {
             .endianness = .Little,
             .fields = &.{ field1, field2, field3 },
             .custom_metadata = &.{ metadata1, metadata2 },
-            .features = &[_]i64{@backingInt(arrow.Feature.COMPRESSED_BODY)},
+            .features = &.{arrow.Feature.COMPRESSED_BODY},
         });
 
         // Build Block structs for dictionaries and record batches
@@ -896,7 +896,7 @@ test "arrow Footer with complex Schema" {
     // Verify schema features
     const features = schema.features() orelse return error.Invalid;
     try std.testing.expectEqual(1, features.len());
-    try std.testing.expectEqual(@as(i64, @backingInt(arrow.Feature.COMPRESSED_BODY)), features.get(0));
+    try std.testing.expectEqual(arrow.Feature.COMPRESSED_BODY, features.get(0));
 
     // Verify dictionaries
     const dictionaries = footer.dictionaries() orelse return error.Invalid;

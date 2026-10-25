@@ -413,7 +413,16 @@ pub const Parser = struct {
                                 .Bool => .{ .bool, @sizeOf(bool) },
                                 .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
                                     const int = try getInteger(element);
-                                    break :get_element .{ .{ .int = int }, int.getSize() };
+                                    const enum_index = field_type.index();
+                                    if (enum_index == -1)
+                                        break :get_element .{ .{ .int = int }, int.getSize() };
+
+                                    const enum_ref = try self.getEnum(enum_index);
+                                    const enum_ref_name = try copyName(arena_allocator, enum_ref.name());
+                                    if (hasBitFlags(enum_ref))
+                                        break :get_element .{ .{ .bit_flags = .{ .name = enum_ref_name } }, int.getSize() };
+
+                                    break :get_element .{ .{ .@"enum" = .{ .name = enum_ref_name } }, int.getSize() };
                                 },
                                 .Float, .Double => {
                                     const float = try getFloat(element);

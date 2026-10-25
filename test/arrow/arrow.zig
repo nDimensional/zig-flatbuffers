@@ -925,7 +925,7 @@ pub const org = struct {
                         endianness: org.apache.arrow.flatbuf.Endianness = @fromBackingInt(0),
                         fields: ?[]const org.apache.arrow.flatbuf.Field = null,
                         custom_metadata: ?[]const org.apache.arrow.flatbuf.KeyValue = null,
-                        features: ?[]const i64 = null,
+                        features: ?[]const org.apache.arrow.flatbuf.Feature = null,
                     };
 
                     @"#ref": flatbuffers.Ref,
@@ -946,8 +946,8 @@ pub const org = struct {
                     }
 
                     /// Features used in the stream/file.
-                    pub fn features(@"#self": Schema) ?flatbuffers.Vector(i64) {
-                        return flatbuffers.decodeVectorField(i64, 3, @"#self".@"#ref");
+                    pub fn features(@"#self": Schema) ?flatbuffers.Vector(org.apache.arrow.flatbuf.Feature) {
+                        return flatbuffers.decodeVectorField(org.apache.arrow.flatbuf.Feature, 3, @"#self".@"#ref");
                     }
                 };
 
