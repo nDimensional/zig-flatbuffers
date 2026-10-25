@@ -237,13 +237,13 @@ inline fn decodeBitFlags(comptime T: type, ref: Ref) T {
     if (bit_flags.fields.len != info.field_names.len)
         @compileError("invalid bit flag fields");
 
-    const value: u64 = @intCast(switch (bit_flags.backing_integer) {
+    const value: u64 = switch (bit_flags.backing_integer) {
         .u8 => ref.decodeScalar(u8),
         .u16 => ref.decodeScalar(u16),
         .u32 => ref.decodeScalar(u32),
         .u64 => ref.decodeScalar(u64),
         else => @compileError("invalid bit flags backing integer"),
-    });
+    };
 
     var result: T = .{};
     inline for (info.field_names, info.field_types, bit_flags.fields) |field_name, field_type, flag| {
