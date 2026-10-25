@@ -192,8 +192,7 @@ pub inline fn decodeUnionField(comptime T: type, comptime tag_id: u16, comptime 
     const tag_field_ref = getFieldRef(table_ref, tag_id) orelse
         return @unionInit(T, "NONE", {});
 
-    const data = tag_field_ref.ptr[tag_field_ref.offset..tag_field_ref.len][0..@sizeOf(tag_type)];
-    const tag_value = std.mem.readInt(tag_info.tag_type, data, .little);
+    const tag_value = tag_field_ref.decodeScalar(tag_info.tag_type);
 
     if (tag_value == 0)
         return @unionInit(T, "NONE", {});
