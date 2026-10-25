@@ -1,0 +1,9 @@
+namespace Flags;
+
+enum Color : ushort (bit_flags) { Red, Green, Blue }
+
+table Root {
+  colors:[Color];
+}
+
+root_type Root;

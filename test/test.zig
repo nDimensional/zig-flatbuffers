@@ -6,6 +6,7 @@ const reflection = @import("reflection").reflection;
 const simple = @import("simple/simple.zig").Eclectic;
 const arrow = @import("arrow/arrow.zig").org.apache.arrow.flatbuf;
 const structs = @import("structs/structs.zig").Structs;
+const flags = @import("flags/flags.zig").Flags;
 
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {
     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
@@ -720,6 +721,37 @@ test "vectors of structs use schema bytesize as stride" {
     try std.testing.expectEqual(aligned.len, decoded_aligned.len());
     for (aligned, 0..) |item, i|
         try std.testing.expectEqual(item, decoded_aligned.get(i));
+}
+
+test "vectors of bit flags" {
+    var gpa = std.heap.DebugAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    const colors: []const flags.Color = &.{
+        .{},
+        .{ .Red = true },
+        .{ .Green = true, .Blue = true },
+        .{ .Red = true, .Green = true, .Blue = true },
+    };
+
+    {
+        const ref = try builder.writeTable(flags.Root, .{ .colors = colors });
+        try builder.writeRoot(flags.Root, ref);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const root = try flatbuffers.decodeRoot(flags.Root, result);
+
+    const decoded_colors = root.colors() orelse return error.Invalid;
+    try std.testing.expectEqual(colors.len, decoded_colors.len());
+    for (colors, 0..) |color, i|
+        try std.testing.expectEqual(color, decoded_colors.get(i));
 }
 
 test "arrow Footer with complex Schema" {

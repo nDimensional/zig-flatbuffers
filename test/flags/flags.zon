@@ -1,0 +1,20 @@
+.{
+    .tables = .{.{ .name = "Flags.Root", .fields = .{.{ .name = "colors", .type = .{ .vector = .{
+        .element_size = 2,
+        .element = .{ .bit_flags = .{ .name = "Flags.Color" } },
+        .minalign = 4,
+    } } }} }},
+    .enums = .{},
+    .unions = .{},
+    .structs = .{},
+    .bit_flags = .{.{
+        .name = "Flags.Color",
+        .backing_integer = .u16,
+        .fields = .{
+            .{ .name = "Red", .value = 1 },
+            .{ .name = "Green", .value = 2 },
+            .{ .name = "Blue", .value = 4 },
+        },
+    }},
+    .root_table = .{ .name = "Flags.Root" },
+}
