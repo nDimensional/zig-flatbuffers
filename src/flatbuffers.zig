@@ -693,6 +693,18 @@ fn writeStruct(comptime S: type, slot: []u8, value: S) void {
     }
 }
 
+fn writeBitFlags(comptime T: type, slot: []u8, value: T) void {
+    const bit_flags_t: *const types.BitFlags = @field(T, "#type");
+    const flags = getBitFlagsValue(T, value);
+    switch (bit_flags_t.backing_integer) {
+        .u8 => std.mem.writeInt(u8, slot[0..1], @truncate(flags), .little),
+        .u16 => std.mem.writeInt(u16, slot[0..2], @truncate(flags), .little),
+        .u32 => std.mem.writeInt(u32, slot[0..4], @truncate(flags), .little),
+        .u64 => std.mem.writeInt(u64, slot[0..8], @truncate(flags), .little),
+        else => @compileError("invalid bit flags type"),
+    }
+}
+
 pub fn getBitFlagsValue(comptime T: type, flags: T) u64 {
     const bit_flags_t: *const types.BitFlags = @field(T, "#type");
 
@@ -937,7 +949,7 @@ pub const Builder = struct {
                         const vector_len: u32 = @truncate(vector_t.element_size * value.len);
 
                         switch (vector_t.element) {
-                            .bool, .int, .float, .@"enum" => {
+                            .bool, .int, .float, .@"enum", .bit_flags => {
                                 self.offset = std.mem.alignBackward(i64, self.offset - vector_len, vector_t.minalign);
                                 while (self.capacity() + self.offset < 0)
                                     try self.prepend();
@@ -948,7 +960,10 @@ pub const Builder = struct {
                                     const block_index = @divFloor(item_offset, block_size);
                                     const block_offset = @mod(item_offset, block_size);
                                     const slot = self.blocks.items[block_index][block_offset..][0..vector_t.element_size];
-                                    writeScalar(@TypeOf(item), slot, item);
+                                    switch (vector_t.element) {
+                                        .bit_flags => writeBitFlags(@TypeOf(item), slot, item),
+                                        else => writeScalar(@TypeOf(item), slot, item),
+                                    }
                                 }
                             },
                             .@"struct" => {
@@ -965,7 +980,6 @@ pub const Builder = struct {
                                     try self.writeBytes(self.struct_buffer.items, item_offset);
                                 }
                             },
-                            .bit_flags => @compileError("not implemented"),
                             .string => {
                                 try self.vector_refs.resize(self.allocator, value.len);
                                 defer self.vector_refs.clearRetainingCapacity();
@@ -1049,17 +1063,9 @@ pub const Builder = struct {
                         const size = comptime bit_flags_t.backing_integer.getSize();
 
                         const field_value: F = @field(fields, field.name);
-                        const flags = getBitFlagsValue(F, field_value);
-                        if (flags != 0) {
+                        if (getBitFlagsValue(F, field_value) != 0) {
                             const slot = try self.alloc(size, size);
-                            switch (bit_flags_t.backing_integer) {
-                                .u8 => std.mem.writeInt(u8, slot, @truncate(flags), .little),
-                                .u16 => std.mem.writeInt(u16, slot, @truncate(flags), .little),
-                                .u32 => std.mem.writeInt(u32, slot, @truncate(flags), .little),
-                                .u64 => std.mem.writeInt(u64, slot, @truncate(flags), .little),
-                                else => @compileError("invalid bit flags type"),
-                            }
-
+                            writeBitFlags(F, slot, field_value);
                             self.vtable.items[field_id] = self.offset;
                         }
                     },
