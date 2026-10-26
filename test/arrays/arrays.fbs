@@ -1,0 +1,21 @@
+namespace Arrays;
+
+struct Vec3 {
+  x:float;
+  y:float;
+  z:float;
+}
+
+struct Block {
+  bytes:[ubyte:3];
+  ints:[int:2];
+  doubles:[double:2];
+  points:[Vec3:2];
+}
+
+table Root {
+  block:Block;
+  blocks:[Block];
+}
+
+root_type Root;

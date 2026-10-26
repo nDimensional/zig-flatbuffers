@@ -1,0 +1,75 @@
+.{
+    .tables = .{.{ .name = "Arrays.Root", .fields = .{ .{ .name = "block", .type = .{ .@"struct" = .{ .name = "Arrays.Block" } } }, .{ .name = "blocks", .type = .{ .vector = .{
+        .element_size = 56,
+        .element = .{ .@"struct" = .{ .name = "Arrays.Block" } },
+        .minalign = 8,
+    } } } } }},
+    .enums = .{},
+    .unions = .{},
+    .structs = .{ .{
+        .name = "Arrays.Block",
+        .fields = .{
+            .{
+                .name = "bytes",
+                .type = .{ .array = .{
+                    .len = 3,
+                    .element_size = 1,
+                    .element = .{ .int = .u8 },
+                } },
+                .offset = 0,
+            },
+            .{
+                .name = "ints",
+                .type = .{ .array = .{
+                    .len = 2,
+                    .element_size = 4,
+                    .element = .{ .int = .i32 },
+                } },
+                .offset = 4,
+            },
+            .{
+                .name = "doubles",
+                .type = .{ .array = .{
+                    .len = 2,
+                    .element_size = 8,
+                    .element = .{ .float = .f64 },
+                } },
+                .offset = 16,
+            },
+            .{
+                .name = "points",
+                .type = .{ .array = .{
+                    .len = 2,
+                    .element_size = 12,
+                    .element = .{ .@"struct" = .{ .name = "Arrays.Vec3" } },
+                } },
+                .offset = 32,
+            },
+        },
+        .bytesize = 56,
+        .minalign = 8,
+    }, .{
+        .name = "Arrays.Vec3",
+        .fields = .{
+            .{
+                .name = "x",
+                .type = .{ .float = .f32 },
+                .offset = 0,
+            },
+            .{
+                .name = "y",
+                .type = .{ .float = .f32 },
+                .offset = 4,
+            },
+            .{
+                .name = "z",
+                .type = .{ .float = .f32 },
+                .offset = 8,
+            },
+        },
+        .bytesize = 12,
+        .minalign = 4,
+    } },
+    .bit_flags = .{},
+    .root_table = .{ .name = "Arrays.Root" },
+}

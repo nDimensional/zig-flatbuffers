@@ -163,7 +163,7 @@ pub const Struct = struct {
                     .bool => try writer.writeAll("bool"),
                     .int => |int| try writer.writeAll(@tagName(int)),
                     .float => |float| try writer.writeAll(@tagName(float)),
-                    .array => |array| try writer.print("[{f}:{d}]", .{ array.element, array.len }),
+                    .array => |array| try writer.print("[{d}]{f}", .{ array.len, array.element }),
                     .@"struct" => |t| try esc(t.name).format(writer),
                 }
             }

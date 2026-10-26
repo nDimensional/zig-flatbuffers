@@ -282,37 +282,40 @@ fn decodeStruct(comptime T: type, ref: Ref) T {
 
     var result: T = undefined;
     inline for (struct_t.fields) |field| {
-        const FieldType = @FieldType(T, field.name);
-
-        @field(result, field.name) = undefined;
+        const F = @FieldType(T, field.name);
         const field_ref = ref.add(field.offset);
-        @field(result, field.name) = get_field: switch (field.type) {
-            .bool, .int, .float => field_ref.decodeScalar(FieldType),
-            .array => |array| {
-                const array_info = switch (@typeInfo(FieldType)) {
-                    .array => |info| info,
-                    else => @compileError("expected array type"),
-                };
-
-                if (array_info.len != array.len)
-                    @compileError("expected equal array lengths");
-
-                var array_result: FieldType = undefined;
-                for (&array_result, 0..) |*element, i| {
-                    const element_ref = field_ref.add(@intCast(i * array.element_size));
-                    element.* = switch (field.type) {
-                        .bool, .int, .float => element_ref.decodeScalar(array.element),
-                        .array => @compileError("not implemented (nested arrays)"),
-                        .@"struct" => decodeStruct(array.element, element_ref),
-                    };
-                }
-                break :get_field result;
-            },
-            .@"struct" => decodeStruct(FieldType, field_ref),
-        };
+        @field(result, field.name) = decodeStructValue(F, field.type, field_ref);
     }
 
     return result;
+}
+
+fn decodeStructValue(comptime F: type, comptime field_type: types.Struct.Field.Type, field_ref: Ref) F {
+    switch (field_type) {
+        .bool, .int, .float => {
+            return field_ref.decodeScalar(F);
+        },
+        .array => |array_type| {
+            const E = get_element_type: switch (@typeInfo(F)) {
+                .array => |array_info| {
+                    if (array_info.len != array_type.len)
+                        @compileError("invalid array (unequal length)");
+                    break :get_element_type array_info.child;
+                },
+                else => @compileError("expected array type"),
+            };
+
+            var array_result: F = undefined;
+            for (&array_result, 0..) |*element, i| {
+                const element_ref = field_ref.add(@as(u32, @intCast(i)) * array_type.element_size);
+                element.* = decodeStructValue(E, array_type.element, element_ref);
+            }
+            return array_result;
+        },
+        .@"struct" => {
+            return decodeStruct(F, field_ref);
+        },
+    }
 }
 
 fn getFieldRef(table_ref: Ref, comptime id: u16) ?Ref {
@@ -685,11 +688,29 @@ fn writeStruct(comptime S: type, slot: []u8, value: S) void {
         const F = @FieldType(S, field.name);
         const field_value: F = @field(value, field.name);
         const field_slot = slot[field.offset..];
-        switch (field.type) {
-            .bool, .int, .float => writeScalar(F, field_slot[0..@sizeOf(F)], field_value),
-            .array => @compileError("not implemented"),
-            .@"struct" => @compileError("not implemented"),
-        }
+        writeStructValue(F, field.type, field_slot, field_value);
+    }
+}
+
+fn writeStructValue(comptime F: type, comptime field_type: types.Struct.Field.Type, field_slot: []u8, field_value: F) void {
+    switch (field_type) {
+        .bool, .int, .float => writeScalar(F, field_slot[0..@sizeOf(F)], field_value),
+        .array => |array_type| {
+            const E = get_element_type: switch (@typeInfo(F)) {
+                .array => |array_info| {
+                    if (array_info.len != array_type.len)
+                        @compileError("invalid array (unequal length)");
+                    break :get_element_type array_info.child;
+                },
+                else => @compileError("expected array type"),
+            };
+
+            for (field_value, 0..) |element_value, i| {
+                const element_slot = field_slot[i * array_type.element_size ..];
+                writeStructValue(E, array_type.element, element_slot, element_value);
+            }
+        },
+        .@"struct" => writeStruct(F, field_slot, field_value),
     }
 }
 

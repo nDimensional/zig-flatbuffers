@@ -7,6 +7,7 @@ const simple = @import("simple/simple.zig").Eclectic;
 const arrow = @import("arrow/arrow.zig").org.apache.arrow.flatbuf;
 const structs = @import("structs/structs.zig").Structs;
 const flags = @import("flags/flags.zig").Flags;
+const arrays = @import("arrays/arrays.zig").Arrays;
 
 fn dumpBuilderState(builder: *const flatbuffers.Builder) void {
     std.log.warn("builder blocks: ({d}) offset {d}", .{ builder.blocks.items.len, builder.offset });
@@ -752,6 +753,55 @@ test "vectors of bit flags" {
     try std.testing.expectEqual(colors.len, decoded_colors.len());
     for (colors, 0..) |color, i|
         try std.testing.expectEqual(color, decoded_colors.get(i));
+}
+
+test "structs with fixed-size arrays" {
+    var gpa = std.heap.DebugAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    var builder = try flatbuffers.Builder.init(allocator);
+    defer builder.deinit();
+
+    const block: arrays.Block = .{
+        .bytes = .{ 1, 2, 3 },
+        .ints = .{ -1, std.math.maxInt(i32) },
+        .doubles = .{ 0.5, -1.25 },
+        .points = .{ .{ .x = 1, .y = 2, .z = 3 }, .{ .x = 4, .y = 5, .z = 6 } },
+    };
+
+    var blocks: [8]arrays.Block = undefined;
+    for (&blocks, 0..) |*item, i| {
+        const n: u8 = @intCast(i);
+        const f: f32 = @floatFromInt(i);
+        item.* = .{
+            .bytes = .{ n, n + 1, n + 2 },
+            .ints = .{ -@as(i32, n), @as(i32, n) << 16 },
+            .doubles = .{ f, -f },
+            .points = .{ .{ .x = f, .y = f + 1, .z = f + 2 }, .{ .x = -f, .y = -f - 1, .z = -f - 2 } },
+        };
+    }
+
+    {
+        const ref = try builder.writeTable(arrays.Root, .{
+            .block = block,
+            .blocks = &blocks,
+        });
+
+        try builder.writeRoot(arrays.Root, ref);
+    }
+
+    const result = try builder.writeAlloc(allocator);
+    defer allocator.free(result);
+
+    const root = try flatbuffers.decodeRoot(arrays.Root, result);
+
+    try std.testing.expectEqual(block, root.block() orelse return error.Invalid);
+
+    const decoded_blocks = root.blocks() orelse return error.Invalid;
+    try std.testing.expectEqual(blocks.len, decoded_blocks.len());
+    for (blocks, 0..) |item, i|
+        try std.testing.expectEqual(item, decoded_blocks.get(i));
 }
 
 test "arrow Footer with complex Schema" {

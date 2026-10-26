@@ -230,18 +230,22 @@ pub const Parser = struct {
                             array.element_size = @intCast(element_size);
                             array.element = get_element: switch (field_type.element()) {
                                 .Bool => .bool,
-                                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => {
-                                    const int = try getInteger(base_type);
+                                .Byte, .UByte, .Short, .UShort, .Int, .UInt, .Long, .ULong => |element_type| {
+                                    const int = try getInteger(element_type);
                                     break :get_element .{ .int = int };
                                 },
-                                .Float, .Double => {
-                                    const float = try getFloat(base_type);
+                                .Float, .Double => |element_type| {
+                                    const float = try getFloat(element_type);
                                     break :get_element .{ .float = float };
                                 },
                                 .Obj => {
                                     const field_object = try self.getObject(field_type.index());
                                     if (!field_object.is_struct())
                                         return error.InvalidStruct;
+
+                                    // there seems to be a bug in flatc that writes the wrong element sizes
+                                    // for structs nested inside arrays.
+                                    array.element_size = @intCast(field_object.bytesize());
 
                                     const field_struct_name = try copyName(arena_allocator, field_object.name());
                                     break :get_element .{ .@"struct" = .{ .name = field_struct_name } };
